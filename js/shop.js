@@ -1228,6 +1228,19 @@ window.CasinoShop = {
   },
   openPc, openPrices, placeOrder, pcHead,
   get carrying() { return carry; }, get placing() { return placing; },
+  // guide.js: lo que la flecha de la primera hora necesita saber (cajas, góndolas, compu, fila y pedidos)
+  guide() {
+    if (!ensure()) return null;
+    const shelfOf = b => (b.k === "prod" && PROD(b.id) ? PROD(b.id).shelf : null);
+    return {
+      carry: carry ? { k: carry.k, id: carry.id, shelf: shelfOf(carry) } : null,
+      boxes: S().shop.boxes.map(b => ({ k: b.k, id: b.id, x: b.x, z: b.z, held: held.has(b.u), shelf: shelfOf(b) })),
+      shelfPos: shelf => { const u = shelfAt(shelf, G.player); return u.pick || u; },
+      shelfName: shelf => SHELF_NAME[shelf] || shelf,
+      ordered: k => S().shop.orders.some(o => o.items.some(i => i.k === k)),
+      queue: queue.length, PC, REG,
+    };
+  },
   debug: {
     get state() { ensure(); return S().shop; },
     get queue() { return queue.map(c => ({ type: c.type.id, mode: c.shop && c.shop.mode, phase: c.shop && c.shop.phase, items: c.shop && c.shop.items, x: c.x, z: c.z, serving: !!(c.shop && c.shop.serving) })); },

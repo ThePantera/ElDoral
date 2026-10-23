@@ -11,6 +11,8 @@
   // ---------------------------------------------------------------
   const CFG = {
     hourSec: 30, dayStart: 8, open: 10, close: 22, dayEnd: 24, // igual que v1
+    firstDayStart: 9.5,             // v2: la partida nueva arranca 9:30 (media hora antes de abrir, no dos)
+    toastGapSec: 0.6, hintGapSec: 3.5, // v2: espera entre avisos que estaban en cola y entre consejos del tutorial
     startMoney: 2500,            // banco inicial (v1: 5000) — arranque más ajustado
     startMachines: ["clasica"],  // ya tenés una clásica usada instalada
     startRep: 40,                // reputación inicial 0-100

@@ -1,5 +1,15 @@
 # Casino Dorado · v2 — Cambios
 
+## Primera hora más guiada (guide.js)
+
+- **Flecha dorada y cartel:** una flecha flota sobre el lugar a donde tenés que ir y un cartel arriba al centro dice qué hacer, con una flechita que gira hacia el objetivo y los metros que faltan. Sigue los pasos del tutorial de Lucho: abrir, vaciar la Clásica, depositar, pedir en la compu, levantar la caja del camión, ubicar la máquina, reponer la heladera o los snacks y cobrar en la caja registradora.
+- Hasta el rango 2 también avisa cuando el bolsillo está casi lleno, cuando una máquina tiene la caja llena o cuando está rota y no tenés técnico.
+- Se apaga en **Esc → Gráficos → Guía: no** (se recuerda en el navegador).
+- **Panel más simple:** el día 1 el panel muestra solo plata, hora, rango, misión, reputación, velocidad y objetivos. Calor, imagen, atractivo y rival, licencia y el ranking semanal aparecen a partir del día 2 (o antes si hace falta: calor apenas sube, licencia si tomás un préstamo).
+- **Arranque más rápido:** la partida nueva empieza a las 9:30 en vez de las 8:00 (`CFG.firstDayStart`).
+- **Avisos ordenados:** mientras hay un diálogo de la historia abierto, los avisos esperan y salen después. Los consejos del tutorial salen de a uno, cada 3,5 s (`CFG.hintGapSec`).
+- Partidas viejas: cargan igual (no hay datos nuevos en la partida).
+
 ## Fluidez: materiales rápidos (perf.js)
 
 - **Materiales rápidos:** en Gráficos *Automática*, *Media* y *Baja*, todos los `MeshStandardMaterial` se crean como material Lambert (luz por vértice). En la prueba con el casino lleno (23 máquinas, 4 mesas, 34 clientes) el salón se dibuja entre 1,7 y 3 veces más rápido. *Alta* conserva los materiales con brillo real de la v1.
