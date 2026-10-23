@@ -1,5 +1,13 @@
 # Casino Dorado · v2 — Cambios
 
+## Volver cada día (daily.js)
+
+- **Premio del día:** la primera vez que entrás cada día (según la fecha de tu compu) aparece un cartel con la racha de 7 días: $300, $500, $800, $1.200, $1.800, $2.500 y $4.000, más experiencia. Si volvés días seguidos la racha sube; del día 7 en adelante te quedás en el premio más alto. Si te salteás un día, la racha vuelve a empezar (se guarda tu mejor racha). Cada rango arriba del 1 suma 35 % a la plata.
+- **Mientras no estabas:** si tenés personal y estuviste afuera más de una hora, tu gente juntó el 4 % de lo que ganaste el último día por cada hora (con tope de 8 horas). Si no tenés personal, el cartel te avisa que contratando te espera esa plata.
+- El cartel sale unos segundos después de entrar, cuando no hay otro panel abierto, y también si pasás la medianoche jugando. Al cerrarlo: monedas y caja registradora.
+- La partida nueva arranca con el día de hoy ya contado: el primer premio llega mañana. En el modo Sandbox no hay premio.
+- Toda la plata entra por `Economy` en dos categorías nuevas del reporte ("Premio del día" y "Mientras no estabas"); los números están en `data.js` (`DAILY`). Las partidas viejas cargan igual y cobran el premio del día 1.
+
 ## Enganche: meta a la vista y festejos (juice.js)
 
 - **Meta siempre visible:** debajo del rango, el panel muestra la próxima compra con su barra (banco + bolsillo contra el precio, con la licencia si falta). Si ya te alcanza algo que no tenés, dice "¡Comprá: …!" y se pone verde. Cuando llegás a la meta suena, se ilumina y aparece un aviso. Tiene en cuenta máquinas, mesas y ampliaciones de tu rango, y el tope de juegos.
