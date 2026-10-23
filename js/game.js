@@ -67,7 +67,7 @@ function freshState(diffId, modeId) {
   return {
     v: 2, difficulty: dId, mode,
     bank: start, pocket: 0, xp: 0, rank: 1, rep: CFG.startRep, heat: 0,
-    day: 1, minutes: CFG.dayStart * 60, speed: 1, dayOver: false,
+    day: 1, minutes: (CFG.firstDayStart || CFG.dayStart) * 60, speed: 1, dayOver: false,
     negDays: 0, licenseDue: CFG.licenseEvery, licenseMissed: 0,
     closures: 0, closedDays: 0, closedToday: false,
     loyalty: { regular: 0, highroller: 0, vip: 0 },
@@ -97,7 +97,20 @@ const START_SLOTS = ["principal_3"]; // la Clásica usada arranca en la fila de 
 // AVISOS Y SONIDO
 // =====================================================================
 const toastsEl = $("toasts");
+// v2: con un diálogo de la historia abierto, los avisos esperan; los consejos (hint) salen de a uno y espaciados
+const toastQ = [], hintQ = [];
+let toastHold = () => false, toastGap = 0;
 function toast(msg, kind) {
+  if (toastHold()) { toastQ.push([msg, kind]); return; }
+  showToast(msg, kind);
+}
+function flushToasts(dt) {
+  toastGap -= dt;
+  if (toastHold() || toastGap > 0) return;
+  if (toastQ.length) { showToast(...toastQ.shift()); toastGap = CFG.toastGapSec; }
+  else if (hintQ.length) { showToast(hintQ.shift()); toastGap = CFG.hintGapSec; }
+}
+function showToast(msg, kind) {
   const el = document.createElement("div");
   el.className = "toast" + (kind ? " " + kind : "");
   el.textContent = msg;
@@ -107,7 +120,7 @@ function toast(msg, kind) {
 }
 function hint(id, msg) { // tutorial: cada consejo sale una sola vez por partida
   if (!S || S.hints[id]) return;
-  S.hints[id] = 1; toast(msg);
+  S.hints[id] = 1; if (hintQ.length < 6) hintQ.push(msg);
 }
 let audio = null;
 // sonido procedural (audio.js): si está cargado, cada evento va a window.casinoAudio; los beeps quedan de respaldo
@@ -2133,6 +2146,7 @@ function clearWorld() {
 }
 function loadState(s, diffId, modeId) {
   if (S) clearWorld();
+  toastQ.length = 0; hintQ.length = 0;
   S = s || freshState(diffId, modeId);
   if (window.CasinoBuild) window.CasinoBuild.beforeLoad(S); // v3: lugares dinámicos
   applyZones(); placeBar(S.bar);
@@ -2259,6 +2273,7 @@ function openOptions() { if (!ui.blocking() && target && target.options) target.
 const panelEl = $("panel"), panelBody = $("panelBody");
 let started = false;
 const ui = { panel: null, ctx: null, tab: "staff", confirm: null, blocking() { return !!this.panel || !started || !!this.mg || !!(window.CasinoCombat && window.CasinoCombat.ko()); } };
+toastHold = () => ui.panel === "dialog"; // los avisos no tapan los diálogos de la historia
 const STICKY = new Set(["report", "over", "rankup", "victory"]);
 function openPanel(kind, html, ctx) {
   ui.panel = kind; if (ctx !== undefined) ui.ctx = ctx;
@@ -2515,7 +2530,7 @@ function renderPause() {
   const conf = ui.confirm === "new";
   openPanel("pause", `<h2>Pausa</h2><div class="keys">${k}</div>
     <div id="gfxSettings"><h3>Gráficos</h3><div class="tabs">${Object.entries(GFX_MODES).map(([id, n]) => `<button class="${gfx.mode === id ? "on" : ""}" data-act="gfx" data-id="${id}">${n}</button>`).join("")}</div>
-    <div class="row2"><button class="ghost sm" data-act="gfxFps" aria-pressed="${gfx.fps}">${gfx.fps ? "Ocultar FPS" : "Mostrar FPS"}</button><button class="ghost sm" data-act="gfxBob" aria-pressed="${gfx.bob}">${gfx.bob ? "Balanceo: sí" : "Balanceo: no"}</button><span>${gfx.mode === "auto" ? "Materiales rápidos y resolución que se ajusta sola para que vaya fluido." : gfx.mode === "baja" ? "Menos resolución, luces y suavizado de bordes: para compus lentas." : gfx.mode === "media" ? "Materiales rápidos, resolución normal." : "Materiales con brillo real y máxima nitidez: pide una buena placa de video."}</span></div></div>
+    <div class="row2"><button class="ghost sm" data-act="gfxFps" aria-pressed="${gfx.fps}">${gfx.fps ? "Ocultar FPS" : "Mostrar FPS"}</button><button class="ghost sm" data-act="gfxBob" aria-pressed="${gfx.bob}">${gfx.bob ? "Balanceo: sí" : "Balanceo: no"}</button>${window.CasinoGuide ? `<button class="ghost sm" data-act="guide" aria-pressed="${window.CasinoGuide.on}">${window.CasinoGuide.on ? "Guía: sí" : "Guía: no"}</button>` : ""}<span>${gfx.mode === "auto" ? "Materiales rápidos y resolución que se ajusta sola para que vaya fluido." : gfx.mode === "baja" ? "Menos resolución, luces y suavizado de bordes: para compus lentas." : gfx.mode === "media" ? "Materiales rápidos, resolución normal." : "Materiales con brillo real y máxima nitidez: pide una buena placa de video."}</span></div></div>
     <p>Dificultad: <b>${diff().name}</b>${D.MODES ? ` · Modo: <b>${(D.MODES[S.mode] || D.MODES.historia).name}</b>` : ""}. La partida se guarda sola cada hora, al comprar y al cerrar el día, en este navegador.</p>
     ${conf ? `<div class="warn">¿Empezar de cero? Se borra la partida guardada: plata, rango, máquinas y personal.</div>` : ""}
     <div class="actions">${conf ? `<button class="ghost" data-act="unconfirm">Volver</button><button class="danger" data-act="newgame">Borrar y empezar</button>`
@@ -2538,6 +2553,7 @@ panelBody.addEventListener("click", e => {
     case "gfx": gfxSet(id); renderPause(); break;
     case "gfxFps": gfx.fps = !gfx.fps; fpsEl.hidden = !gfx.fps; gfxSave(); renderPause(); break;
     case "gfxBob": gfx.bob = !gfx.bob; gfxSave(); renderPause(); break;
+    case "guide": if (window.CasinoGuide) window.CasinoGuide.set(!window.CasinoGuide.on); renderPause(); break; // guide.js
     case "closeRank": closePanel(true, true); break;
     case "buyMachine": if (buyMachine(MACH(id), ctx.slot)) closePanel(false, true); break;
     case "buyTable": if (buyTable(TDEF(id), ctx.spot)) closePanel(false, true); break;
@@ -2741,6 +2757,8 @@ function tick(now) {
   if (window.CasinoWorld) window.CasinoWorld.frame(real); // cielo, lluvia y relámpagos (world.js)
   if (window.CasinoGames) window.CasinoGames.frame(real);
   if (window.CasinoCombat) window.CasinoCombat.frame(real); // arma en mano, golpes, cámara al caer (combat.js)
+  if (window.CasinoGuide) window.CasinoGuide.frame(real); // flecha y cartel de la primera hora (guide.js)
+  flushToasts(raw);
   pulseT += real;
   const pulse = Math.sin(pulseT * 3.3);
   markerMat.opacity = markerWideMat.opacity = markerRoundMat.opacity = 0.65 + pulse * 0.25; ghostEdgeMat.opacity = 0.35 + pulse * 0.2;
@@ -2884,6 +2902,15 @@ window.CasinoClientsBridge = {
   D, CFG, HOUR, KEY, isTouch, LOOKS, RIVAL, ui, player, customers, machines, tables, scene,
   Economy, Rep, Rank, Pocket, SFX, sfx, toast, fmt, floatText, setIcon, save, updateHud, openPanel, closePanel, checkObjectives,
   spawnCustomer, leaveCustomer, releaseGame, goTo, streetPoint, near, dealerAvailable, dealerHere, isFull, zoneOpen, rivalOpen,
+};
+
+// =====================================================================
+// GUÍA DE LA PRIMERA HORA (puente) — guide.js: flecha dorada y cartel con el próximo paso
+// =====================================================================
+window.CasinoGuideBridge = {
+  get S() { return S; }, get isOpen() { return isOpen; }, get started() { return started; },
+  KEY, isTouch, scene, ui, player, machines, SAFE, fmt, isFull,
+  pocketCap: () => Pocket.cap(), pocketRoom: () => Pocket.room(),
 };
 
 window.CasinoStaffBridge = {

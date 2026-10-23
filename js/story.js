@@ -897,6 +897,9 @@ window.CasinoStory = {
   aurelioBusy: () => ensure() && Object.keys(ST().active).some(id => MDEF[id] && MDEF[id].who === "aurelio"),
   met: who => ensure() && !!ST().met[who],
   get ending() { return ensure() ? ST().ending : null; },
+  // guide.js: qué misión está activa y cuánto avanzó desde que empezó
+  isActive: id => ensure() && !!ST().active[id],
+  since: (id, k) => { if (!ensure()) return 0; const m = ST().active[id]; return m ? since(m, k) : 0; },
   debug: {
     get story() { return ST(); },
     get dialog() { return cur ? { id: cur.id, line: cur.i, of: cur.lines.length, who: cur.who, choices: cur.def.choices ? cur.def.choices.map(c => c.key) : null, done: cur.done } : null; },
