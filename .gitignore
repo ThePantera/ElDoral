@@ -1,0 +1,21 @@
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Herramientas de prueba (Playwright / npm)
+node_modules/
+package-lock.json
+test-results/
+playwright-report/
+*.tgz
+
+# Entregas comprimidas y temporales
+*.zip
+*.log
+tmp/
