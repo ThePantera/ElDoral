@@ -968,7 +968,7 @@ function applyRoom(force) {
     let R = roomObjs[id];
     if (!R) {
       const [a, b] = ZONE_X[id], w = b - a;
-      const floor = new T.Mesh(new T.PlaneGeometry(w, 20), new T.MeshStandardMaterial({ roughness: 0.95 }));
+      const floor = new T.Mesh(new T.PlaneGeometry(w, 20, ...(window.CasinoPerf ? [CasinoPerf.segs(w), CasinoPerf.segs(20)] : [])), new T.MeshStandardMaterial({ roughness: 0.95 })); // perf.js: más vértices para la luz por vértice
       floor.rotation.x = -HALF; floor.position.set((a + b) / 2, 0.004, 0); floor.visible = false; API.scene.add(floor);
       const walls = zoneWallSegs(id).map(s => {
         const len = s.hi - s.lo, m = new T.Mesh(new T.PlaneGeometry(len, 2.6), new T.MeshBasicMaterial());

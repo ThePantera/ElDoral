@@ -764,7 +764,7 @@
             if (stopAt && spinT >= stopAt[i]) { spin[i] = false; dirty = true; }
           }
           if (stopAt && spinT > stopAt[2] + 3) stopAt = null;
-          if (frameT <= 0 || dirty) { frameT = 1 / 12; dirty = false; draw(); }
+          if ((frameT <= 0 || dirty) && !api.far) { frameT = 1 / 12; dirty = false; draw(); } // api.far: fuera de cámara o lejos (game.js)
           if (!spin[0] && !spin[1] && !spin[2]) { spin = null; stopAt = null; draw(); if (lastWin) flash = 2.0; }
           else if (!stopAt && spinT > 4) { spin = null; draw(); }  // nunca quedarse girando para siempre
         }
