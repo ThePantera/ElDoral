@@ -11,7 +11,7 @@ Este repositorio es la base de la **versión 2**. Arranca con el código complet
 3. Tocá **Abrir el casino** y hacé clic en la pantalla para mirar con el mouse.
 
 No hace falta instalar nada ni tener internet. La partida se guarda sola en el navegador.
-Si va lento: **Esc → Gráficos → Media o Baja**.
+Si va lento: **Esc → Gráficos → Media o Baja**. Desde la v2, todas las calidades menos *Alta* usan materiales rápidos (`js/perf.js`).
 
 ### Controles básicos
 

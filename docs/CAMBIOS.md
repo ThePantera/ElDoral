@@ -1,5 +1,13 @@
 # Casino Dorado · v2 — Cambios
 
+## Fluidez: materiales rápidos (perf.js)
+
+- **Materiales rápidos:** en Gráficos *Automática*, *Media* y *Baja*, todos los `MeshStandardMaterial` se crean como material Lambert (luz por vértice). En la prueba con el casino lleno (23 máquinas, 4 mesas, 34 clientes) el salón se dibuja entre 1,7 y 3 veces más rápido. *Alta* conserva los materiales con brillo real de la v1.
+- Piso, techo, paredes, zócalos, paredes "SE VENDE", alfombras de zona y la vereda tienen más vértices con materiales rápidos, para que las luces de techo sigan marcando sus círculos.
+- **Baja** además apaga el suavizado de bordes. Cambiar entre *Alta* y el resto, o entrar y salir de *Baja*, guarda la partida y recarga la página.
+- Las tragamonedas que están fuera de cámara o a más de 16 m no redibujan la pantalla mientras giran (cada redibujo sube una textura a la placa de video).
+- Sin cambios en el guardado ni en la cantidad de luces (8).
+
 ## Personal por escala y Nahuel Técnico (staff.js)
 
 - **Fichas:** cada empleado tiene nombre, rango (Aprendiz · Junior · Semi-senior · Senior · Estrella) y eficiencia 1-100. La eficiencia acelera sus movimientos y acorta tareas (reparar, vaciar cajas, servir) y sube el sueldo (curva suave: eficiencia 50 = sueldo base).

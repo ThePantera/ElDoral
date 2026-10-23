@@ -233,7 +233,7 @@ function licenseFee() { return Math.round((CFG.licenseBase + CFG.licensePerGame 
 // MUNDO 3D
 // =====================================================================
 const canvas = $("scene");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch, powerPreference: "high-performance" });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch && (!window.CasinoPerf || window.CasinoPerf.antialias), powerPreference: "high-performance" });
 // color: tono fílmico (ACES) para lo iluminado; carteles, pantallas, neones e íconos (materiales sin luz) quedan fuera
 // del tono para que brillen más que el resto (falso "bloom" sin posproceso)
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.22;
@@ -260,7 +260,12 @@ function gfxApply() {
   if (A.setLowFx) A.setLowFx(gfx.mode === "baja"); // halos y brillos falsos (art.js)
 }
 function gfxSave() { try { localStorage.setItem(GFX_KEY, JSON.stringify({ mode: gfx.mode, fps: gfx.fps, bob: gfx.bob })); } catch (e) {} }
-function gfxSet(mode) { if (!GFX_MODES[mode]) return; gfx.mode = mode; gfx.scale = 1; gfx.good = 0; gfx.t = 0; gfxSave(); gfxApply(); }
+function gfxSet(mode) {
+  if (!GFX_MODES[mode]) return; gfx.mode = mode; gfx.scale = 1; gfx.good = 0; gfx.t = 0; gfxSave(); gfxApply();
+  // perf.js elige el material y el suavizado de bordes al cargar: si cambian, se guarda y se recarga la página
+  const P = window.CasinoPerf;
+  if (P && ((mode !== "alta") !== P.fast || (mode !== "baja") !== P.antialias)) { toast("Aplicando los gráficos nuevos…"); if (started && !S.gameOver) save(true); setTimeout(() => location.reload(), 350); }
+}
 // cada cuadro: promedio móvil del tiempo de cuadro; en "auto" ajusta la escala cada ~2 s
 function gfxFrame(raw) {
   if (raw <= 0 || raw > 0.5) return;
@@ -324,8 +329,9 @@ function addCollider(minX, maxX, minZ, maxZ, kind, on) {
 function removeCollider(c) { const i = colliders.indexOf(c); if (i >= 0) { colliders.splice(i, 1); navDirty = true; } }
 function boxAt(x, z, w, d, kind, on) { return addCollider(x - w / 2, x + w / 2, z - d / 2, z + d / 2, kind, on); }
 
+const SEG = n => (window.CasinoPerf ? window.CasinoPerf.segs(n) : 1); // perf.js: con materiales rápidos, superficies grandes con más vértices
 function box(w, h, d, mat, x, y, z, solid) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); scene.add(m);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, SEG(w), SEG(h), SEG(d)), mat); m.position.set(x, y, z); scene.add(m);
   if (solid) boxAt(x, z, w, d, "wall");
   return m;
 }
@@ -335,9 +341,9 @@ function wall(x, z, len, alongX, outerFace) {
   const inner = repMat(WM.wall, len / 2, 1);
   let mat = inner;
   if (outerFace != null) { mat = [inner, inner, inner, inner, inner, inner]; mat[outerFace] = repMat(WM.exterior, len / 3, 1); }
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, WALL_H, d), mat); m.position.set(x, WALL_H / 2, z); scene.add(m);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, WALL_H, d, SEG(w), SEG(WALL_H), SEG(d)), mat); m.position.set(x, WALL_H / 2, z); scene.add(m);
   boxAt(x, z, w, d, "wall");
-  const wain = new THREE.Mesh(new THREE.BoxGeometry(alongX ? len : WALL_T + 0.04, 0.9, alongX ? WALL_T + 0.04 : len), repMat(WM.wainscot, len / 2, 1));
+  const wain = new THREE.Mesh(new THREE.BoxGeometry(alongX ? len : WALL_T + 0.04, 0.9, alongX ? WALL_T + 0.04 : len, alongX ? SEG(len) : 1, 1, alongX ? 1 : SEG(len)), repMat(WM.wainscot, len / 2, 1));
   wain.position.set(x, 0.45, z); scene.add(wain);
   return m;
 }
@@ -349,9 +355,9 @@ for (let x = -50; x <= 50; x += 4) box(2, 0.022, 0.15, M.lane, x, 0.001, -20.5, 
 box(110, 0.04, 6.4, M.walk, 0, 0.0, -13.6, false);
 box(110, 0.04, 4, M.walk, 0, 0.0, -26, false);
 const carpetTex = A.makeCarpetTexture({ repeat: [22, 10] });
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(44, 20), new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.95 }));
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(44, 20, SEG(44), SEG(20)), new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.95 }));
 floor.rotation.x = -Math.PI / 2; floor.position.y = 0.002; scene.add(floor);
-const ceil = new THREE.Mesh(new THREE.PlaneGeometry(44, 20), repMat(WM.ceiling, 11, 5)); ceil.rotation.x = Math.PI / 2; ceil.position.y = WALL_H; scene.add(ceil);
+const ceil = new THREE.Mesh(new THREE.PlaneGeometry(44, 20, SEG(44), SEG(20)), repMat(WM.ceiling, 11, 5)); ceil.rotation.x = Math.PI / 2; ceil.position.y = WALL_H; scene.add(ceil);
 wall(0, 10, 44.3, true, 4);
 wall(-12.5, -10, 19, true, 5); wall(12.5, -10, 19, true, 5);
 wall(-22, 0, 20, false, 1); wall(22, 0, 20, false, 0);
@@ -646,7 +652,7 @@ for (const zone of D.ZONES) {
   });
   const plain = new THREE.MeshStandardMaterial({ color: 0x2a2f33 }), signed = new THREE.MeshStandardMaterial({ map: tex });
   const faceMats = zone.side > 0 ? [plain, signed, plain, plain, plain, plain] : [signed, plain, plain, plain, plain, plain];
-  const m = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, WALL_H, 19.7), faceMats); m.position.set(wx, WALL_H / 2, 0); scene.add(m);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, WALL_H, 19.7, 1, SEG(WALL_H), SEG(19.7)), faceMats); m.position.set(wx, WALL_H / 2, 0); scene.add(m);
   addCollider(wx - WALL_T / 2, wx + WALL_T / 2, -9.85, 9.85, "zonewall", () => !S.zones[zone.id]);
   proxy(m, 0.6, WALL_H, 19.7, { prompt: () => ({ text: `Ampliar: ${zone.name} (${fmt(zone.price)})`, sub: S.rank < zone.rank ? `Necesitás rango ${zone.rank}` : `${zone.slots} lugares para máquinas, ${zone.tableSpots} para mesas` }), hold: () => 0, use: () => openZonePanel(zone) }, 0, 0, 0).position.y = 0;
   zoneWalls[zone.id] = m;
@@ -2509,7 +2515,7 @@ function renderPause() {
   const conf = ui.confirm === "new";
   openPanel("pause", `<h2>Pausa</h2><div class="keys">${k}</div>
     <div id="gfxSettings"><h3>Gráficos</h3><div class="tabs">${Object.entries(GFX_MODES).map(([id, n]) => `<button class="${gfx.mode === id ? "on" : ""}" data-act="gfx" data-id="${id}">${n}</button>`).join("")}</div>
-    <div class="row2"><button class="ghost sm" data-act="gfxFps" aria-pressed="${gfx.fps}">${gfx.fps ? "Ocultar FPS" : "Mostrar FPS"}</button><button class="ghost sm" data-act="gfxBob" aria-pressed="${gfx.bob}">${gfx.bob ? "Balanceo: sí" : "Balanceo: no"}</button><span>${gfx.mode === "auto" ? "Ajusta la resolución sola para que vaya fluido." : gfx.mode === "baja" ? "Menos resolución y luces: para compus lentas." : gfx.mode === "media" ? "Resolución normal, sin alta densidad." : "Máxima nitidez: pide una buena placa de video."}</span></div></div>
+    <div class="row2"><button class="ghost sm" data-act="gfxFps" aria-pressed="${gfx.fps}">${gfx.fps ? "Ocultar FPS" : "Mostrar FPS"}</button><button class="ghost sm" data-act="gfxBob" aria-pressed="${gfx.bob}">${gfx.bob ? "Balanceo: sí" : "Balanceo: no"}</button><span>${gfx.mode === "auto" ? "Materiales rápidos y resolución que se ajusta sola para que vaya fluido." : gfx.mode === "baja" ? "Menos resolución, luces y suavizado de bordes: para compus lentas." : gfx.mode === "media" ? "Materiales rápidos, resolución normal." : "Materiales con brillo real y máxima nitidez: pide una buena placa de video."}</span></div></div>
     <p>Dificultad: <b>${diff().name}</b>${D.MODES ? ` · Modo: <b>${(D.MODES[S.mode] || D.MODES.historia).name}</b>` : ""}. La partida se guarda sola cada hora, al comprar y al cerrar el día, en este navegador.</p>
     ${conf ? `<div class="warn">¿Empezar de cero? Se borra la partida guardada: plata, rango, máquinas y personal.</div>` : ""}
     <div class="actions">${conf ? `<button class="ghost" data-act="unconfirm">Volver</button><button class="danger" data-act="newgame">Borrar y empezar</button>`
@@ -2702,6 +2708,15 @@ function simStep(dt) {
   if (S.minutes >= CFG.dayEnd * 60) { S.minutes = CFG.dayEnd * 60; endDay(); }
 }
 let prev = performance.now(), renderOn = true, pulseT = 0, untoneT = 0;
+// v2: las tragamonedas fuera de cámara o lejos no redibujan la pantalla mientras giran (cada redibujo sube una textura a la placa)
+const SCREEN_FAR = 16, _frustum = new THREE.Frustum(), _projM = new THREE.Matrix4(), _visSphere = new THREE.Sphere(new THREE.Vector3(), 1.4);
+function updateMachineVis() {
+  camera.updateMatrixWorld(); _projM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); _frustum.setFromProjectionMatrix(_projM);
+  for (const m of machines) {
+    _visSphere.center.set(m.group.position.x, 1.2, m.group.position.z);
+    m.api.far = _visSphere.center.distanceTo(camera.position) > SCREEN_FAR || !_frustum.intersectsSphere(_visSphere);
+  }
+}
 function tick(now) {
   const raw = Math.max(0, (now - prev) / 1000), real = Math.min(0.1, raw); prev = now;
   gfxFrame(raw);
@@ -2715,6 +2730,7 @@ function tick(now) {
     camera.position.set(Math.sin(now / 9000) * 3, 1.9, -6.5); camera.rotation.set(-0.06, player.yaw, 0);
   }
   for (const a of animated) a.update(real);
+  updateMachineVis();
   for (const m of machines) m.api.update(real);
   for (const o of decorObjs) if (o.group.userData.spin) o.group.userData.spin.rotation.y += real * 1.5;
   if (window.CasinoBuild) window.CasinoBuild.update(real);
