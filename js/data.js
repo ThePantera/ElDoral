@@ -592,4 +592,17 @@
     blood: { cleanCost: 450, cleanSec: 7, atr: 6, repHit: -8, heatHit: 14, repMelee: -3, heatMelee: 4, max: 6 },
     mafia: { hour: 21, shootSec: 14, gunmen: 6, cars: 3, rep: -18, heat: 22, repHit: -2, speak: "Te metiste contra la Mafia" },
   };
+
+  // ---------------------------------------------------------------
+  // VOLVER CADA DÍA (daily.js): premio por entrar cada día (con racha) y lo que juntó el personal mientras no estabas
+  // ---------------------------------------------------------------
+  Object.assign(CATS, { daily: "Premio del día", away: "Mientras no estabas" });
+  window.CASINO_DATA.DAILY = {
+    rewards: [300, 500, 800, 1200, 1800, 2500, 4000], // plata por día de racha (del día 7 en adelante se queda en el último)
+    xp: [10, 15, 20, 30, 40, 50, 100],                 // experiencia por día de racha
+    rankMul: 0.35,      // cada rango arriba del 1 suma 35 % al premio en plata
+    roundTo: 10,
+    delaySec: 3,        // espera después de entrar, para que primero salgan los avisos de bienvenida
+    away: { minHours: 1, maxHours: 8, perHourShare: 0.04 }, // por hora afuera (tope 8 h): 4 % de la ganancia del último día, si tenés personal
+  };
 })();

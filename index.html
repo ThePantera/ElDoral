@@ -102,6 +102,17 @@ button.sm { padding: .3em .7em; font-size: .9rem; }
 .panel h3 { margin: 4px 0 0; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--brass); }
 .panel p { margin: 0; color: var(--ivory-dim); line-height: 1.45; }
 .panel p b { color: var(--ivory); }
+/* premio del día (daily.js) */
+.dl-track { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.dl-d { position: relative; border: 1px solid #2c4a3d; border-radius: 8px; padding: 6px 2px; text-align: center; display: grid; gap: 2px; background: rgba(0, 0, 0, .18); }
+.dl-d small { font-size: .68rem; color: var(--ivory-dim); }
+.dl-d b { font-size: .78rem; color: var(--ivory-dim); }
+.dl-d i { position: absolute; top: -8px; right: -4px; font-style: normal; color: var(--brass); font-size: .9rem; }
+.dl-d.done { border-color: var(--brass-dim); opacity: .7; }
+.dl-d.done b { color: var(--brass); }
+.dl-d.now { border-color: var(--brass); background: rgba(216, 178, 90, .18); box-shadow: 0 0 12px rgba(255, 210, 90, .35); }
+.dl-d.now b { color: var(--ivory); }
+@media (max-width: 420px) { .dl-track { gap: 3px; } .dl-d b { font-size: .64rem; } .dl-d small { font-size: .6rem; } }
 .panel .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 #gfxSettings { display: grid; gap: 8px; border-top: 1px solid #23493b; padding-top: 10px; margin-bottom: 10px; }
@@ -267,3 +278,4 @@ button.sm { padding: .3em .7em; font-size: .9rem; }
 <script src="js/story.js"></script>
 <script src="js/guide.js"></script>
 <script src="js/juice.js"></script>
+<script src="js/daily.js"></script>

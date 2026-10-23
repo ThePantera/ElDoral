@@ -2026,6 +2026,7 @@ function endDay() {
   if (window.CasinoGames) window.CasinoGames.onEndDay(notes); // resumen de dados, bingo y carreras (games.js)
   window.CasinoStory?.onEndDay?.(notes); // misiones de la historia (story.js)
   window.CasinoClients?.onEndDay?.(notes); // socios y torneo de póker (clients.js)
+  window.CasinoDaily?.onEndDay?.(); // ganancia del día para "mientras no estabas" (daily.js)
   S.totals.days++; S.totals.net += st.net;
   T.end = S.bank; T.heatEnd = S.heat; T.repEnd = S.rep;
   S.negDays = S.bank < 0 ? S.negDays + 1 : 0;
@@ -2133,6 +2134,7 @@ function sanitize(text) {
   if (raw.world && typeof raw.world === "object") s.world = raw.world; // clima, hotel y favores: world.js lo valida campo por campo
   if (raw.clients && typeof raw.clients === "object") s.clients = raw.clients; // socios y torneo: clients.js lo valida campo por campo
   if (raw.combat && typeof raw.combat === "object" && !Array.isArray(raw.combat)) s.combat = raw.combat; // armas, daños y la Mafia: combat.js lo valida campo por campo
+  if (raw.daily && typeof raw.daily === "object" && !Array.isArray(raw.daily)) s.daily = raw.daily; // premio del día y racha: daily.js lo valida campo por campo
   if (raw.life && typeof raw.life === "object") s.life = { day: int(raw.life.day, 0, 0, 1e6), fired: int(raw.life.fired, 0, 0, 9) }; // eventos ya ocurridos hoy (life.js)
   return { state: s };
 }
@@ -2147,7 +2149,7 @@ function clearWorld() {
 }
 function loadState(s, diffId, modeId) {
   if (S) clearWorld();
-  toastQ.length = 0; hintQ.length = 0; window.CasinoJuice?.reset();
+  toastQ.length = 0; hintQ.length = 0; window.CasinoJuice?.reset(); window.CasinoDaily?.reset();
   S = s || freshState(diffId, modeId);
   if (window.CasinoBuild) window.CasinoBuild.beforeLoad(S); // v3: lugares dinámicos
   applyZones(); placeBar(S.bar);
@@ -2922,6 +2924,13 @@ window.CasinoGuideBridge = {
 window.CasinoJuiceBridge = {
   get S() { return S; }, get started() { return started; }, D, scene, ui, player, machines, tables, panelEl, SFX, fmt, toast, gamesCount,
   maxGames: () => Rank.maxGames(),
+};
+
+// =====================================================================
+// VOLVER CADA DÍA (puente) — daily.js: premio del día con racha y lo que juntó el personal mientras no estabas
+// =====================================================================
+window.CasinoDailyBridge = {
+  get S() { return S; }, get started() { return started; }, D, ui, player, Economy, Rank, SFX, fmt, save, updateHud, openPanel, closePanel,
 };
 
 window.CasinoStaffBridge = {
