@@ -1,5 +1,15 @@
 # Casino Dorado · v2 — Cambios
 
+## Salón ultra VIP secreto (vip.js) · contenido opcional +18
+
+- **Opcional:** viene apagado. Se activa en **Esc → Contenido +18** (pide confirmar que tenés 18 o más). Todo es ficción y nada explícito: el baile es vestido y el reservado es una puerta cerrada con fundido a negro. Todos los personajes son adultos.
+- **Misión «El salón de Madame Rubí»:** con el +18 activado y rango 5 (Director), te dejan una tarjeta: la estantería del fondo del salón principal (detrás de las máquinas, a la izquierda del cartel JACKPOT) suena hueca. Aceptás, pagás la obra ($15.000), contratás una acompañante, le sacás el candado y atendés al primer cliente: premio $5.000 y 200 de experiencia.
+- **El salón:** detrás de la estantería (E entra y sale, R abre el panel). Barra privada, escenario con caño de baile, sillones y un **reservado** donde entra 1 cliente con 1 acompañante (luz verde libre, roja ocupado).
+- **Acompañantes:** hasta 3. Madame Rubí manda 4 candidatas por día con edad (21 a 34) y carisma. Contratarla cuesta según el carisma; cobra por noche y la mitad de cada servicio. La de más carisma baila en el caño (más propinas).
+- **Candado:** con candado no entra nadie. Sin candado, con el casino abierto, llegan clientes ultra VIP que pagan entrada y barra ($350), propinas y el reservado (tarifa Discreta, Premium o Diamante: más cara, menos clientes). Vos también podés usar el reservado, pagando de la plata del casino.
+- **Inspector:** si viene mientras el salón está sin candado, lo puede descubrir (50 % más el calor, según cuánto de su visita estuvo abierto; con candado 6 %). Si lo descubre: multa $20.000, +30 de calor, −8 de reputación y el salón clausurado 3 días. Si llega con el salón abierto te avisa, y si corrés a ponerle el candado bajás el riesgo. La coima aceptada también lo tapa. Cada día abierto suma 1,5 de calor por los rumores.
+- Toda la plata pasa por `Economy` en categorías nuevas del reporte; los números están en `data.js` (`VIPNIGHT`). Sin luces nuevas. Las partidas viejas cargan igual (con el +18 apagado).
+
 ## Volver cada día (daily.js)
 
 - **Premio del día:** la primera vez que entrás cada día (según la fecha de tu compu) aparece un cartel con la racha de 7 días: $300, $500, $800, $1.200, $1.800, $2.500 y $4.000, más experiencia. Si volvés días seguidos la racha sube; del día 7 en adelante te quedás en el premio más alto. Si te salteás un día, la racha vuelve a empezar (se guarda tu mejor racha). Cada rango arriba del 1 suma 35 % a la plata.
