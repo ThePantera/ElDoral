@@ -1,5 +1,14 @@
 # Casino Dorado · v2 — Cambios
 
+## Enganche: meta a la vista y festejos (juice.js)
+
+- **Meta siempre visible:** debajo del rango, el panel muestra la próxima compra con su barra (banco + bolsillo contra el precio, con la licencia si falta). Si ya te alcanza algo que no tenés, dice "¡Comprá: …!" y se pone verde. Cuando llegás a la meta suena, se ilumina y aparece un aviso. Tiene en cuenta máquinas, mesas y ampliaciones de tu rango, y el tope de juegos.
+- **Lluvia de monedas** al vaciar una caja y al depositar en la caja fuerte. El saldo del banco **cuenta hacia arriba** en dorado.
+- **Premios grandes y Mega Jackpot:** monedas que saltan de la máquina; el jackpot además muestra el cartel "¡MEGA JACKPOT!" con brillo dorado si estás cerca.
+- **Subir de rango:** papel picado de colores, brillo dorado y el cartel del rango entra con un salto.
+- **Hitos del banco** ($10.000, $25.000, $50.000, $100.000…): cartel grande y monedas, una vez por partida (los que ya pasaste al cargar no se repiten).
+- Una sola malla instanciada para todas las partículas (1 llamada de dibujo), sin luces nuevas. Partidas viejas cargan igual.
+
 ## Primera hora más guiada (guide.js)
 
 - **Flecha dorada y cartel:** una flecha flota sobre el lugar a donde tenés que ir y un cartel arriba al centro dice qué hacer, con una flechita que gira hacia el objetivo y los metros que faltan. Sigue los pasos del tutorial de Lucho: abrir, vaciar la Clásica, depositar, pedir en la compu, levantar la caja del camión, ubicar la máquina, reponer la heladera o los snacks y cobrar en la caja registradora.

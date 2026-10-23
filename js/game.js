@@ -614,7 +614,7 @@ const SAFE = { x: -8.55, z: -8.3, win: { x: -8.55, z: -7.25 }, idle: { x: -6.6, 
       : { text: "Caja fuerte", sub: `Bolsillo vacío · Banco ${fmt(S.bank)}` },
     hold: () => S.pocket > 0 ? CFG.playerDepositSec : 0,
     usable: () => S.pocket > 0,
-    use: () => { if (S.pocket > 0) { const n = Pocket.deposit(); sfx("deposit", SAFE.win.x, SAFE.win.z) || SFX.cash(); floatText(SAFE.win.x, 2.0, SAFE.win.z, "+" + fmt(n), "#6fd39b"); toast(`Depositaste ${fmt(n)}. Banco: ${fmt(S.bank)}.`, "good"); updateHud(true); save(true); } },
+    use: () => { if (S.pocket > 0) { const n = Pocket.deposit(); sfx("deposit", SAFE.win.x, SAFE.win.z) || SFX.cash(); window.CasinoJuice?.onDeposit(SAFE.win.x, SAFE.win.z, n); floatText(SAFE.win.x, 2.0, SAFE.win.z, "+" + fmt(n), "#6fd39b"); toast(`Depositaste ${fmt(n)}. Banco: ${fmt(S.bank)}.`, "good"); updateHud(true); save(true); } },
     options: () => openMgmt("bank"), optLabel: "Banco",
   }, 1.4, 0, 0.35);
 }
@@ -777,7 +777,7 @@ function machineSpin(m, c) {
   c.budget += prize;
   if (window.CasinoLife) window.CasinoLife.onSpin(m, c, prize, jackpot); // reacciones (life.js)
   const syms = won || jackpot ? (() => { const s = jackpot ? "7" : pick(SYMBOLS); return [s, s, s]; })() : (() => { const s = randSyms(); if (s[0] === s[1] && s[1] === s[2]) s[2] = s[2] === "7" ? "★" : "7"; return s; })();
-  m.api.pull(); m.pending = { t: 0.55, syms, win: !!(won || jackpot), jp: jackpot > 0, big: prize >= def.bet * 5 }; sfx("spin", m.slot.x, m.slot.z);
+  m.api.pull(); m.pending = { t: 0.55, syms, win: !!(won || jackpot), jp: jackpot > 0, big: prize >= def.bet * 5, prize }; sfx("spin", m.slot.x, m.slot.z);
   if (c.person && c.person.api.gesture) c.person.api.gesture(Math.random() < 0.4 ? "lever" : "press"); // palanca o botón
   if (won && c.person && Math.random() < 0.35) c.person.api.cheer(1.2);
   const brk = def.brk * (S.staff.tech > 0 ? SDEF("tech").brkMul : 1) * UPV("brkMul", 1);
@@ -812,6 +812,7 @@ function collectByPlayer(m) {
   m.d.box -= amt; S.pocket += amt;
   if (m.d.box <= 0 || amt >= capOf(m.def) * 0.2) { S.today.st.boxesByHand++; Rank.add(D.XP.collectBox); checkObjectives(); }
   sfx("collect", m.slot.x, m.slot.z) || SFX.coin(); floatText(m.slot.x, 2.1, m.slot.z - 0.4, "+" + fmt(amt), "#6fd39b");
+  window.CasinoJuice?.onCollect(m, amt); // lluvia de monedas (juice.js)
   updateFill(m); refreshScreen(m);
   if (m.d.box > 0) toast(`Te entraron ${fmt(amt)}: el bolsillo se llenó. Quedan ${fmt(m.d.box)} en la caja.`, "bad");
   if (S.pocket >= Pocket.cap() * 0.8) hint("pocket", `Bolsillo casi lleno (${fmt(S.pocket)}/${fmt(Pocket.cap())}). Andá a la caja fuerte de la entrada y mantené ${KEY} para depositar.`);
@@ -836,7 +837,7 @@ function sellMachine(m) {
 }
 function updateMachines(dt) {
   for (const m of machines) {
-    if (m.pending) { m.pending.t -= dt; if (m.pending.t <= 0) { const p = m.pending; m.pending = null; if (!m.d.broken) { m.api.setReels(p.syms, p.win); sfx(p.jp ? "jackpot" : p.big ? "bigwin" : p.win ? "win" : "stop", m.slot.x, m.slot.z); } } }
+    if (m.pending) { m.pending.t -= dt; if (m.pending.t <= 0) { const p = m.pending; m.pending = null; if (!m.d.broken) { m.api.setReels(p.syms, p.win); sfx(p.jp ? "jackpot" : p.big ? "bigwin" : p.win ? "win" : "stop", m.slot.x, m.slot.z); if (p.big || p.jp) window.CasinoJuice?.onWin(m, p.prize, p.jp); } } }
     if (!m.d.broken && isFull(m) && !m.fullDrawn && !m.pending) drawFull(m);
   }
 }
@@ -2146,7 +2147,7 @@ function clearWorld() {
 }
 function loadState(s, diffId, modeId) {
   if (S) clearWorld();
-  toastQ.length = 0; hintQ.length = 0;
+  toastQ.length = 0; hintQ.length = 0; window.CasinoJuice?.reset();
   S = s || freshState(diffId, modeId);
   if (window.CasinoBuild) window.CasinoBuild.beforeLoad(S); // v3: lugares dinámicos
   applyZones(); placeBar(S.bar);
@@ -2471,6 +2472,7 @@ function showPendingRank() {
   openPanel("rankup", `<p class="dim" style="letter-spacing:.2em;text-transform:uppercase;font-size:.8rem">Nuevo rango · ${lvl}/${D.RANKS.length}</p>
     <p class="rankbig">${r.name}</p><h3>Desbloqueaste</h3><ul class="unlocks">${items.join("")}</ul>
     <div class="actions"><button data-act="closeRank">¡A trabajar!</button></div>`);
+  window.CasinoJuice?.onRankUp(lvl, r.name); // papel picado y brillo (juice.js)
 }
 
 // reporte del día y fin ---------------------------------------------------------
@@ -2770,6 +2772,7 @@ function tick(now) {
     if (!ui.panel) showPendingRank();
   }
   untoneT -= raw; if (untoneT <= 0) { untoneT = 0.5; untone(scene); } // objetos nuevos (muñecos, cajas, carteles)
+  if (window.CasinoJuice) window.CasinoJuice.frame(real); // meta, monedas y festejos; va después de updateHud (juice.js)
   if (renderOn) renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
@@ -2911,6 +2914,14 @@ window.CasinoGuideBridge = {
   get S() { return S; }, get isOpen() { return isOpen; }, get started() { return started; },
   KEY, isTouch, scene, ui, player, machines, SAFE, fmt, isFull,
   pocketCap: () => Pocket.cap(), pocketRoom: () => Pocket.room(),
+};
+
+// =====================================================================
+// ENGANCHE (puente) — juice.js: meta de la próxima compra, monedas, papel picado y saldo que cuenta
+// =====================================================================
+window.CasinoJuiceBridge = {
+  get S() { return S; }, get started() { return started; }, D, scene, ui, player, machines, tables, panelEl, SFX, fmt, toast, gamesCount,
+  maxGames: () => Rank.maxGames(),
 };
 
 window.CasinoStaffBridge = {
