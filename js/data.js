@@ -606,3 +606,40 @@
     away: { minHours: 1, maxHours: 8, perHourShare: 0.04 }, // por hora afuera (tope 8 h): 4 % de la ganancia del último día, si tenés personal
   };
 })();
+
+// ---------------------------------------------------------------
+// SALÓN ULTRA VIP SECRETO (vip.js) · contenido opcional +18 (se activa en la Pausa). Todo ficción, nada explícito.
+//  Detrás de la estantería del fondo del salón principal. Barra privada, caño de baile y un reservado para 1 cliente con 1 acompañante.
+//  Es ilegal: si el inspector lo descubre hay multa, calor y clausura del salón por unos días.
+// ---------------------------------------------------------------
+(() => {
+  const CATS = window.CASINO_DATA.CATS;
+  Object.assign(CATS, {
+    vipBuild: "Salón ultra VIP: obra secreta", vipEntry: "Salón ultra VIP: entradas, barra y propinas", vipService: "Salón ultra VIP: reservado",
+    vipPay: "Acompañantes: sueldo y su parte", vipHire: "Acompañantes: contratación", vipOwner: "Reservado: lo usaste vos", vipMission: "Misión del salón ultra VIP",
+  });
+  window.CASINO_DATA.VIPNIGHT = {
+    rank: 5,                 // Madame Rubí aparece cuando llegás a Director (y el +18 está activado)
+    buildCost: 15000,        // la obra secreta (paredes, barra, caño y reservado)
+    reward: { cash: 5000, xp: 200 }, // al atender al primer cliente ultra VIP
+    maxEscorts: 3,
+    candidates: 4,           // cuántas se postulan por día
+    hireBase: 1200, hirePerCharm: 18,      // contratarla: 1.200 + 18 por punto de carisma
+    wageBase: 120, wagePerCharm: 3,        // lo que cobra por noche (solo los días que el salón no está clausurado)
+    escortShare: 0.5,        // del precio del reservado, la mitad es para ella
+    entry: 350,              // cada cliente ultra VIP paga entrada y barra privada
+    tipBase: 80, tipPerCharm: 2.4,         // propina en el caño (la baila la de más carisma que esté libre)
+    clientsPerHour: 1.1, perEscort: 0.35, maxPerHour: 4, // llegada de clientes por hora con el salón abierto (sin candado)
+    sessionHours: 1,         // el reservado se ocupa una hora por servicio
+    tiers: [                 // tarifa del reservado: más cara, menos clientes
+      { id: "discreto", name: "Discreta", price: 900,  demand: 1.25 },
+      { id: "premium",  name: "Premium",  price: 1800, demand: 1.0 },
+      { id: "diamante", name: "Diamante", price: 3500, demand: 0.65 },
+    ],
+    heatPerOpenDay: 1.5,     // los rumores: calor por cada día que estuvo abierto al público
+    inspect: { lockedChance: 0.06, openChance: 0.5, perHeat: 0.004 }, // chance de que el inspector lo descubra (según cuánto de su visita estuvo abierto)
+    caught: { fine: 20000, heat: 30, rep: -8, sealDays: 3 },
+    names: ["Valentina", "Camila", "Jazmín", "Luna", "Bianca", "Abril", "Mía", "Renata", "Zoe", "Kiara", "Milagros", "Antonella", "Delfina", "Martina", "Catalina", "Sofía"],
+    dresses: [0x8e1f26, 0x15151c, 0x5a1f6e, 0xb8325a, 0x1f3a6e, 0xd9a84a, 0x0f5a4a, 0x6a0f1f],
+  };
+})();

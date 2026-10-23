@@ -2026,6 +2026,7 @@ function endDay() {
   if (window.CasinoGames) window.CasinoGames.onEndDay(notes); // resumen de dados, bingo y carreras (games.js)
   window.CasinoStory?.onEndDay?.(notes); // misiones de la historia (story.js)
   window.CasinoClients?.onEndDay?.(notes); // socios y torneo de póker (clients.js)
+  window.CasinoVip?.onEndDay?.(notes); // salón ultra VIP: sueldos de las acompañantes, rumores y resumen (vip.js)
   window.CasinoDaily?.onEndDay?.(); // ganancia del día para "mientras no estabas" (daily.js)
   S.totals.days++; S.totals.net += st.net;
   T.end = S.bank; T.heatEnd = S.heat; T.repEnd = S.rep;
@@ -2135,6 +2136,7 @@ function sanitize(text) {
   if (raw.clients && typeof raw.clients === "object") s.clients = raw.clients; // socios y torneo: clients.js lo valida campo por campo
   if (raw.combat && typeof raw.combat === "object" && !Array.isArray(raw.combat)) s.combat = raw.combat; // armas, daños y la Mafia: combat.js lo valida campo por campo
   if (raw.daily && typeof raw.daily === "object" && !Array.isArray(raw.daily)) s.daily = raw.daily; // premio del día y racha: daily.js lo valida campo por campo
+  if (raw.vip && typeof raw.vip === "object" && !Array.isArray(raw.vip)) s.vip = raw.vip; // salón ultra VIP (+18): vip.js lo valida campo por campo
   if (raw.life && typeof raw.life === "object") s.life = { day: int(raw.life.day, 0, 0, 1e6), fired: int(raw.life.fired, 0, 0, 9) }; // eventos ya ocurridos hoy (life.js)
   return { state: s };
 }
@@ -2175,7 +2177,7 @@ function near(x, z, d) { return dist2(player.x, player.z, x, z) < d; }
 const keys = {};
 const stick = { x: 0, y: 0 };
 function blocked(x, z, ignore) {
-  if (x < -32 || x > 32 || z > 12 || z < -25) return true;
+  if (x < -32 || x > 32 || z > 17.5 || z < -25) return true; // z hasta 17,5: el salón ultra VIP está detrás de la pared del fondo (vip.js)
   for (const c of colliders) if (c.on() && !(ignore && ignore.has(c)) && contains(c, x, z, player.r)) return true;
   return false;
 }
@@ -2534,7 +2536,7 @@ function renderPause() {
   const conf = ui.confirm === "new";
   openPanel("pause", `<h2>Pausa</h2><div class="keys">${k}</div>
     <div id="gfxSettings"><h3>Gráficos</h3><div class="tabs">${Object.entries(GFX_MODES).map(([id, n]) => `<button class="${gfx.mode === id ? "on" : ""}" data-act="gfx" data-id="${id}">${n}</button>`).join("")}</div>
-    <div class="row2"><button class="ghost sm" data-act="gfxFps" aria-pressed="${gfx.fps}">${gfx.fps ? "Ocultar FPS" : "Mostrar FPS"}</button><button class="ghost sm" data-act="gfxBob" aria-pressed="${gfx.bob}">${gfx.bob ? "Balanceo: sí" : "Balanceo: no"}</button>${window.CasinoGuide ? `<button class="ghost sm" data-act="guide" aria-pressed="${window.CasinoGuide.on}">${window.CasinoGuide.on ? "Guía: sí" : "Guía: no"}</button>` : ""}<span>${gfx.mode === "auto" ? "Materiales rápidos y resolución que se ajusta sola para que vaya fluido." : gfx.mode === "baja" ? "Menos resolución, luces y suavizado de bordes: para compus lentas." : gfx.mode === "media" ? "Materiales rápidos, resolución normal." : "Materiales con brillo real y máxima nitidez: pide una buena placa de video."}</span></div></div>
+    <div class="row2"><button class="ghost sm" data-act="gfxFps" aria-pressed="${gfx.fps}">${gfx.fps ? "Ocultar FPS" : "Mostrar FPS"}</button><button class="ghost sm" data-act="gfxBob" aria-pressed="${gfx.bob}">${gfx.bob ? "Balanceo: sí" : "Balanceo: no"}</button>${window.CasinoGuide ? `<button class="ghost sm" data-act="guide" aria-pressed="${window.CasinoGuide.on}">${window.CasinoGuide.on ? "Guía: sí" : "Guía: no"}</button>` : ""}${window.CasinoVip ? window.CasinoVip.pauseButton() : ""}<span>${gfx.mode === "auto" ? "Materiales rápidos y resolución que se ajusta sola para que vaya fluido." : gfx.mode === "baja" ? "Menos resolución, luces y suavizado de bordes: para compus lentas." : gfx.mode === "media" ? "Materiales rápidos, resolución normal." : "Materiales con brillo real y máxima nitidez: pide una buena placa de video."}</span></div></div>
     <p>Dificultad: <b>${diff().name}</b>${D.MODES ? ` · Modo: <b>${(D.MODES[S.mode] || D.MODES.historia).name}</b>` : ""}. La partida se guarda sola cada hora, al comprar y al cerrar el día, en este navegador.</p>
     ${conf ? `<div class="warn">¿Empezar de cero? Se borra la partida guardada: plata, rango, máquinas y personal.</div>` : ""}
     <div class="actions">${conf ? `<button class="ghost" data-act="unconfirm">Volver</button><button class="danger" data-act="newgame">Borrar y empezar</button>`
@@ -2725,6 +2727,7 @@ function simStep(dt) {
   if (window.CasinoGames) window.CasinoGames.update(dt); // carreras, sesión de bingo y rachas de los dados (games.js)
   if (window.CasinoClients) window.CasinoClients.update(dt); // socios y torneo de póker (clients.js)
   if (window.CasinoCombat) window.CasinoCombat.update(dt); // peleas, sangre y el ataque de la Mafia (combat.js)
+  window.CasinoVip?.update?.(dt); // clientes y reservado del salón ultra VIP (vip.js)
   if (S.minutes >= CFG.dayEnd * 60) { S.minutes = CFG.dayEnd * 60; endDay(); }
 }
 let prev = performance.now(), renderOn = true, pulseT = 0, untoneT = 0;
@@ -2758,6 +2761,7 @@ function tick(now) {
   if (window.CasinoLife) window.CasinoLife.frame(real);
   if (window.CasinoShop) window.CasinoShop.frame(real);
   if (window.CasinoOwner) window.CasinoOwner.frame(real); // espejo, manos, auto, acuario (owner.js)
+  window.CasinoVip?.frame?.(real); // baile y luces del salón ultra VIP (vip.js)
   if (window.CasinoWorld) window.CasinoWorld.frame(real); // cielo, lluvia y relámpagos (world.js)
   if (window.CasinoGames) window.CasinoGames.frame(real);
   if (window.CasinoCombat) window.CasinoCombat.frame(real); // arma en mano, golpes, cámara al caer (combat.js)
@@ -2931,6 +2935,16 @@ window.CasinoJuiceBridge = {
 // =====================================================================
 window.CasinoDailyBridge = {
   get S() { return S; }, get started() { return started; }, D, ui, player, Economy, Rank, SFX, fmt, save, updateHud, openPanel, closePanel,
+};
+
+// =====================================================================
+// SALÓN ULTRA VIP SECRETO (puente) — vip.js: contenido opcional +18 detrás de la estantería del fondo
+// =====================================================================
+window.CasinoVipBridge = {
+  get S() { return S; }, get isOpen() { return isOpen; }, get started() { return started; }, get inspector() { return inspector; },
+  D, HOUR, KEY, isTouch, scene, ui, player, M, WALL_H,
+  Economy, Rep, Heat, Rank, SFX, sfx, toast, hint, fmt, floatText, save, updateHud, openPanel, closePanel, renderPause,
+  proxy, boxAt, acquirePerson, releasePerson, setIcon,
 };
 
 window.CasinoStaffBridge = {
