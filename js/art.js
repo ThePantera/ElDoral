@@ -1791,8 +1791,9 @@
   }
 
   // ==================================================================
-  // PEOPLE — muñecos con huesos (SkinnedMesh rígido): una sola malla por
-  // persona (1 draw call + la sombra), cara pintada en canvas con gestos.
+  // PEOPLE — personajes de Kenney (CC0) con los huesos del juego: una sola
+  // malla por persona (1 draw call + la sombra). El cuerpo, la ropa pintada
+  // y las caras con gestos los arma people.js; acá queda el look y la animación.
   // ==================================================================
   var UNIFORMS = {
     tech: { top: 'coverall', shirt: 0xe07a2a, pants: 0xe07a2a, hat: 'cap', hatColor: 0x1f2c48, belt: 0x3a2a1a, tools: true, sleeves: 'long' },
@@ -1806,246 +1807,11 @@
   var SKINS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
   var HAIRS = [0x2a1a10, 0x1a1a1a, 0x5a3a1a, 0x8a6a3a, 0xc9b28a, 0x6a2a14];
   var HAIR_M = ['short', 'quiff', 'buzz', 'short', 'curly', 'bald', 'quiff'], HAIR_F = ['long', 'bob', 'ponytail', 'bun', 'long', 'curly'];
-  var HEAD_S = 1.3; // cabeza grande y redonda (estilo "chunky"); sombreros y gorras se cuelgan del hueso y escalan con ella
-
-  // --- caras ------------------------------------------------------------
-  // La cara es un casquete de la cabeza con UV planas: u = 0.5 + 4x, v = 0.235 + 3y (coords locales de la cabeza).
-  // El resto del cuerpo usa la franja blanca de abajo del canvas, así el color sale de los vértices.
-  var FACE_UV = { u: function (x) { return 0.5 + 4 * x; }, v: function (y) { return 0.235 + 3 * y; } };
-  var BODY_UV = [0.5, 0.06];
+  // las expresiones de la cara (las dibuja people.js en un atlas compartido)
   var EXPRESSIONS = ['neutral', 'blink', 'happy', 'sad', 'angry', 'surprised', 'dizzy'];
-  function drawFace(g, expr) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 128);
-    g.setTransform(512, 0, 0, -384, 64, 97.92);   // metros locales de la cabeza -> píxeles
-    var ink = '#1c130e', ex = 0.042, ey = 0.146;
-    function ell(x, y, rx, ry, col) { g.fillStyle = col; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill(); }
-    function line(pts, w, col) { g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(pts[0], pts[1]); for (var i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); g.stroke(); }
-    function arc(x, y, r, a0, a1, w, col) { g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.arc(x, y, r, a0, a1); g.stroke(); }
-    // mejillas
-    ell(-0.074, 0.104, 0.019, 0.012, 'rgba(225,95,95,0.22)'); ell(0.074, 0.104, 0.019, 0.012, 'rgba(225,95,95,0.22)');
-    for (var s = -1; s <= 1; s += 2) {
-      var x = s * ex;
-      if (expr === 'blink') line([x - 0.014, ey - 0.002, x, ey - 0.006, x + 0.014, ey - 0.002], 0.0045, ink);
-      else if (expr === 'happy') arc(x, ey - 0.008, 0.013, 0.15 * PI, 0.85 * PI, 0.0055, ink);
-      else if (expr === 'dizzy') { line([x - 0.012, ey + 0.012, x + 0.012, ey - 0.012], 0.005, ink); line([x - 0.012, ey - 0.012, x + 0.012, ey + 0.012], 0.005, ink); }
-      else {
-        var big = expr === 'surprised' ? 1.25 : 1;
-        ell(x, ey, 0.0135 * big, 0.0195 * big, ink);
-        ell(x + 0.005, ey + 0.007, 0.0045 * big, 0.0052 * big, 'rgba(255,255,255,0.9)');
-      }
-      // cejas
-      var bi = expr === 'sad' ? 0.012 : expr === 'angry' ? -0.012 : expr === 'surprised' ? 0.008 : 0.002;
-      var by = ey + 0.034 + (expr === 'surprised' ? 0.008 : 0);
-      line([x - s * 0.016, by + bi, x + s * 0.016, by - (expr === 'angry' ? 0.004 : 0) + (expr === 'sad' ? -0.006 : 0.002)], 0.0058, ink);
-    }
-    // boca
-    var my = 0.084;
-    if (expr === 'happy') {
-      g.fillStyle = '#4a1612'; g.beginPath(); g.moveTo(-0.03, my + 0.006); g.quadraticCurveTo(0, my - 0.046, 0.03, my + 0.006); g.closePath(); g.fill();
-      g.fillStyle = '#d0605a'; g.beginPath(); g.ellipse(0, my - 0.016, 0.012, 0.006, 0, 0, TAU); g.fill();
-      g.fillStyle = 'rgba(255,255,255,0.9)'; g.fillRect(-0.02, my - 0.002, 0.04, 0.007);
-    } else if (expr === 'sad') line([-0.02, my - 0.008, 0, my + 0.002, 0.02, my - 0.008], 0.005, '#4a1612');
-    else if (expr === 'angry') { line([-0.022, my - 0.002, 0.022, my - 0.002], 0.006, '#4a1612'); }
-    else if (expr === 'surprised') ell(0, my - 0.006, 0.011, 0.015, '#4a1612');
-    else if (expr === 'dizzy') line([-0.024, my, -0.012, my - 0.006, 0, my, 0.012, my - 0.006, 0.024, my], 0.0045, '#4a1612');
-    else line([-0.018, my + 0.002, 0, my - 0.005, 0.018, my + 0.002], 0.0048, '#5a1f1a');
-    g.setTransform(1, 0, 0, 1, 0, 0);
-  }
-  function faceMat(expr) {
-    return cache(_mats, 'face|' + expr, function () {
-      var t = cachedTex('face|' + expr, 128, 128, function (g) { drawFace(g, expr); });
-      return new T.MeshStandardMaterial({ vertexColors: true, skinning: true, roughness: 0.72, metalness: 0, map: t });
-    });
-  }
-
-  // --- geometría con huesos (cada pieza va pegada a un solo hueso) --------
-  function latheG(key, pts, seg) {
-    return cache(_geos, 'lathe|' + key + '|' + seg, function () { return new T.LatheGeometry(pts.map(function (p) { return new T.Vector2(p[0], p[1]); }), seg); });
-  }
-  function mergeSkinned(list, rest) {
-    var parts = [], total = 0, i, k;
-    for (i = 0; i < list.length; i++) {
-      var it = list[i], g = it.geo.index ? it.geo.toNonIndexed() : it.geo.clone();
-      g.applyMatrix4(it.m);
-      var uvs = null;
-      if (it.face) { // UV planas en coords locales de la cabeza (antes de pasar al espacio de la malla)
-        var p = g.attributes.position; uvs = new Float32Array(p.count * 2);
-        for (k = 0; k < p.count; k++) { uvs[k * 2] = FACE_UV.u(p.getX(k)); uvs[k * 2 + 1] = FACE_UV.v(p.getY(k)); }
-      }
-      g.applyMatrix4(rest[it.bone]);
-      parts.push({ g: g, c: it.color, b: it.bone, uv: uvs }); total += g.attributes.position.count;
-    }
-    var pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), uv = new Float32Array(total * 2), col = new Float32Array(total * 3);
-    var si = new Uint16Array(total * 4), sw = new Float32Array(total * 4), o = 0, c = new T.Color();
-    for (i = 0; i < parts.length; i++) {
-      var q = parts[i], n = q.g.attributes.position.count;
-      pos.set(q.g.attributes.position.array, o * 3); nor.set(q.g.attributes.normal.array, o * 3);
-      c.set(q.c);
-      for (k = 0; k < n; k++) {
-        var j = o + k;
-        col[j * 3] = c.r; col[j * 3 + 1] = c.g; col[j * 3 + 2] = c.b;
-        if (q.uv) { uv[j * 2] = q.uv[k * 2]; uv[j * 2 + 1] = q.uv[k * 2 + 1]; } else { uv[j * 2] = BODY_UV[0]; uv[j * 2 + 1] = BODY_UV[1]; }
-        si[j * 4] = q.b; sw[j * 4] = 1;
-      }
-      o += n; q.g.dispose();
-    }
-    var out = new T.BufferGeometry();
-    out.setAttribute('position', new T.BufferAttribute(pos, 3));
-    out.setAttribute('normal', new T.BufferAttribute(nor, 3));
-    out.setAttribute('uv', new T.BufferAttribute(uv, 2));
-    out.setAttribute('color', new T.BufferAttribute(col, 3));
-    out.setAttribute('skinIndex', new T.BufferAttribute(si, 4));
-    out.setAttribute('skinWeight', new T.BufferAttribute(sw, 4));
-    out.computeBoundingBox();
-    out.boundingSphere = new T.Sphere(new T.Vector3(0, 0.9, 0), 1.95); // alcanza también acostado o sentado
-    return out;
-  }
-  // índices de huesos
-  var BN = { hips: 0, torso: 1, head: 2, legL: 3, kneeL: 4, legR: 5, kneeR: 6, armL: 7, elbowL: 8, armR: 9, elbowR: 10 };
   function hash(str) { var h = 2166136261; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   function mul(c, f) { return new T.Color(c).multiplyScalar(f).getHex(); }
   function mix(a, b, f) { return new T.Color(a).lerp(new T.Color(b), f).getHex(); }
-
-  /** Arma la lista de piezas de una persona. o = look resuelto (ver makePerson). */
-  function personParts(o) {
-    var L = [];
-    function P(bone, geo, color, x, y, z, rx, ry, rz, sx, sy, sz) { L.push({ bone: bone, geo: geo, color: color, m: mtx(x, y, z, rx, ry, rz, sx, sy, sz) }); }
-    var F = o.female, skin = o.skin, hair = o.hair, top = o.topColor, sleeve = o.sleeveColor, pants = o.pants;
-    var skinD = mul(skin, 0.9);
-    // ---- torso ----
-    var tb = BN.torso;
-    var pelvisPts = F ? [[0, -0.09], [0.13, -0.088], [0.175, -0.03], [0.182, 0.06], [0.164, 0.13]] : [[0, -0.09], [0.13, -0.088], [0.165, -0.03], [0.172, 0.06], [0.166, 0.13]];
-    var chestPts = F ? [[0.162, 0.1], [0.145, 0.22], [0.168, 0.36], [0.18, 0.46], [0.182, 0.54], [0.162, 0.61], [0.1, 0.65], [0.055, 0.664], [0, 0.666]]
-      : [[0.166, 0.1], [0.162, 0.2], [0.18, 0.34], [0.197, 0.46], [0.2, 0.54], [0.175, 0.61], [0.11, 0.655], [0.06, 0.668], [0, 0.67]];
-    if (o.top !== 'dress') P(tb, latheG('pelvis' + F, pelvisPts, 10), o.top === 'coverall' ? top : pants, 0, 0, 0, 0, 0, 0, 1, 1, 0.74);
-    P(tb, latheG('chest' + F, chestPts, 10), top, 0, 0, 0, 0, 0, 0, 1, 1, 0.7);
-    P(tb, cylG(0.05, 0.056, 0.12, 8), skin, 0, 0.685, 0.0);                                   // cuello
-    if (o.belt != null) { P(tb, cylG(0.171, 0.171, 0.04, 10), o.belt, 0, 0.11, 0, 0, 0, 0, 1, 1, 0.74); P(tb, rbox(0.06, 0.04, 0.02, 0.006), 0xc9a24a, 0, 0.11, 0.127); }
-    var fz = F ? 0.118 : 0.13;  // frente del pecho
-    switch (o.top) {
-      case 'tee':
-        P(tb, torG(0.058, 0.012, 4, 10), mul(top, 0.75), 0, 0.648, 0.012, PI / 2 - 0.25, 0, 0, 1, 0.9, 1);
-        if (o.stripe != null) P(tb, cylG(0.199, 0.199, 0.06, 10, true), o.stripe, 0, 0.42, 0, 0, 0, 0, 1, 1, 0.7);
-        break;
-      case 'polo':
-        P(tb, rbox(0.06, 0.025, 0.05, 0.008), mul(top, 0.85), -0.035, 0.655, 0.05, 0.5, 0, 0.5);
-        P(tb, rbox(0.06, 0.025, 0.05, 0.008), mul(top, 0.85), 0.035, 0.655, 0.05, 0.5, 0, -0.5);
-        P(tb, rbox(0.03, 0.12, 0.012, 0.004), mul(top, 0.8), 0, 0.57, fz - 0.002, -0.12);
-        P(tb, sphG(0.007, 5, 4), 0xf3e9d2, 0, 0.6, fz + 0.004); P(tb, sphG(0.007, 5, 4), 0xf3e9d2, 0, 0.55, fz + 0.01);
-        break;
-      case 'hoodie':
-        P(tb, torG(0.085, 0.04, 6, 12), mul(top, 0.85), 0, 0.64, -0.035, PI / 2 - 0.5, 0, 0, 1.1, 0.95, 1);
-        P(tb, rbox(0.22, 0.1, 0.025, 0.012), mul(top, 0.88), 0, 0.26, fz - 0.004, -0.05);
-        P(tb, boxG(0.008, 0.09, 0.008), 0xf3e9d2, -0.03, 0.56, fz + 0.015, -0.15); P(tb, boxG(0.008, 0.09, 0.008), 0xf3e9d2, 0.03, 0.56, fz + 0.015, -0.15);
-        break;
-      case 'suit': {
-        var lap = mul(top, 0.78);
-        P(tb, latheG('hem' + F, [[0.185, -0.03], [0.182, 0.06], [0.175, 0.13]], 10), top, 0, 0, 0, 0, 0, 0, 1, 1, 0.76); // faldón del saco
-        P(tb, boxG(0.085, 0.3, 0.02), o.shirt, 0, 0.5, fz - 0.003, -0.1, 0, 0, 1, 1, 1);
-        P(tb, boxG(0.035, 0.3, 0.018), lap, -0.05, 0.5, fz + 0.004, -0.1, 0, -0.18);
-        P(tb, boxG(0.035, 0.3, 0.018), lap, 0.05, 0.5, fz + 0.004, -0.1, 0, 0.18);
-        if (o.tie != null) { P(tb, boxG(0.032, 0.22, 0.012), o.tie, 0, 0.48, fz + 0.008, -0.1); P(tb, boxG(0.04, 0.03, 0.02), o.tie, 0, 0.615, fz + 0.0); }
-        P(tb, boxG(0.055, 0.025, 0.01), o.trim, -0.115, 0.5, fz - 0.002, -0.1, 0, 0.12);        // pañuelo
-        P(tb, sphG(0.009, 5, 4), o.trim, 0, 0.27, fz + 0.02); P(tb, sphG(0.009, 5, 4), o.trim, 0, 0.2, fz + 0.022);
-        break;
-      }
-      case 'vest': {
-        P(tb, latheG('vest' + F, [[0.172, 0.12], [0.168, 0.2], [0.186, 0.34], [0.202, 0.46], [0.205, 0.53], [0.17, 0.57]], 10), o.vest, 0, 0, 0, 0, 0, 0, 1, 1, 0.71);
-        P(tb, boxG(0.075, 0.2, 0.02), o.shirt, 0, 0.52, fz + 0.006, -0.12);
-        P(tb, sphG(0.008, 5, 4), 0xd9a84a, 0, 0.3, fz + 0.03); P(tb, sphG(0.008, 5, 4), 0xd9a84a, 0, 0.23, fz + 0.03);
-        if (o.bow != null) { P(tb, cylG(0.0, 0.03, 0.05, 4), o.bow, -0.026, 0.635, 0.115, 0, 0, PI / 2); P(tb, cylG(0.0, 0.03, 0.05, 4), o.bow, 0.026, 0.635, 0.115, 0, 0, -PI / 2); P(tb, sphG(0.012, 5, 4), o.bow, 0, 0.635, 0.12); }
-        P(tb, rbox(0.06, 0.02, 0.008, 0.003), 0xf3e9d2, -0.1, 0.47, fz + 0.012, -0.12);        // gafete
-        break;
-      }
-      case 'guard':
-        P(tb, rbox(0.05, 0.06, 0.012, 0.006), o.badge, -0.095, 0.48, fz + 0.004, -0.1);
-        P(tb, rbox(0.07, 0.02, 0.1, 0.008), 0x0b0c0e, -0.17, 0.62, 0, 0, 0, 0.2); P(tb, rbox(0.07, 0.02, 0.1, 0.008), 0x0b0c0e, 0.17, 0.62, 0, 0, 0, -0.2);
-        P(tb, rbox(0.04, 0.07, 0.03, 0.008), 0x0b0c0e, 0.11, 0.55, fz - 0.005, -0.1); P(tb, cylG(0.004, 0.004, 0.06, 4), 0x0b0c0e, 0.125, 0.61, fz - 0.005);
-        P(tb, rbox(0.06, 0.08, 0.05, 0.01), 0x0b0c0e, 0.16, 0.05, 0.06);                         // cartuchera
-        P(tb, rbox(0.12, 0.03, 0.01, 0.004), 0xd9a84a, 0, 0.4, -0.142, 0.1);                       // tira de la espalda
-        break;
-      case 'coverall':
-        P(tb, rbox(0.09, 0.09, 0.012, 0.006), mul(top, 0.8), -0.09, 0.47, fz - 0.002, -0.1);
-        P(tb, cylG(0.2, 0.2, 0.03, 10, true), 0xe8e8d8, 0, 0.36, 0, 0, 0, 0, 1, 1, 0.7);         // banda reflectiva
-        if (o.tools) { P(tb, rbox(0.06, 0.07, 0.04, 0.01), 0x5a3a1a, -0.14, 0.06, 0.08); P(tb, rbox(0.05, 0.06, 0.04, 0.01), 0x5a3a1a, 0.15, 0.06, 0.07); P(tb, cylG(0.006, 0.006, 0.09, 4), 0xc9ced4, 0.15, 0.12, 0.07); }
-        break;
-      case 'apron':
-        P(tb, rbox(0.26, 0.5, 0.02, 0.01), o.apron, 0, 0.22, fz + 0.008, -0.04);
-        P(tb, boxG(0.01, 0.12, 0.01), o.apron, -0.07, 0.56, fz - 0.005, -0.2); P(tb, boxG(0.01, 0.12, 0.01), o.apron, 0.07, 0.56, fz - 0.005, -0.2);
-        P(tb, rbox(0.1, 0.05, 0.012, 0.005), mul(o.apron, 1.3), 0, 0.2, fz + 0.02);
-        break;
-      case 'dress':
-        P(BN.hips, cylG(0.17, 0.27, 0.36, 12, true), top, 0, -0.08, 0, 0, 0, 0, 1, 1, 0.8);
-        P(tb, latheG('pelvisD', [[0, -0.09], [0.16, -0.06], [0.178, 0.06], [0.164, 0.13]], 10), top, 0, 0, 0, 0, 0, 0, 1, 1, 0.74);
-        P(tb, torG(0.06, 0.006, 4, 14), 0xd9a84a, 0, 0.64, 0.03, PI / 2 - 0.35);          // collar
-        break;
-    }
-    if (o.armband != null) { P(BN.armL, cylG(0.063, 0.063, 0.035, 8), o.armband, 0, -0.08, 0); P(BN.armR, cylG(0.063, 0.063, 0.035, 8), o.armband, 0, -0.08, 0); }
-    // ---- cabeza (coords locales antes de HEAD_S) ----
-    var hb = BN.head;
-    P(hb, sphG(0.125, 14, 10), skin, 0, 0.13, 0, 0, 0, 0, 0.98, 1.05, 1);
-    L.push({ bone: hb, face: true, color: skin, geo: cache(_geos, 'facecap', function () { return new T.SphereGeometry(0.1268, 14, 9, PI / 2 - 0.78, 1.56, 0.3 * PI, 0.48 * PI); }), m: mtx(0, 0.13, 0, 0, 0, 0, 0.98, 1.05, 1) });
-    P(hb, sphG(0.024, 7, 5), skinD, 0, 0.112, 0.122, 0, 0, 0, 0.9, 0.8, 1);
-    P(hb, sphG(0.03, 6, 5), skinD, -0.121, 0.125, -0.005, 0, 0, 0, 0.45, 0.9, 0.75); P(hb, sphG(0.03, 6, 5), skinD, 0.121, 0.125, -0.005, 0, 0, 0, 0.45, 0.9, 0.75);
-    var hs = o.hairStyle, capped = !!o.hat;
-    function capTop(r, cov, lift) { if (capped) { r = 0.131; cov = Math.min(cov, 0.45); } P(hb, new T.SphereGeometry(r, 12, 6, 0, TAU, 0, PI * cov), hair, 0, 0.15 + (lift || 0), -0.012, -0.22, 0, 0, 1, 1.03, 1.06); }
-    switch (capped && hs !== 'long' && hs !== 'ponytail' && hs !== 'bob' ? 'capband' : hs) {
-      case 'capband': P(hb, new T.SphereGeometry(0.131, 12, 3, PI / 2 + 0.85, TAU - 1.7, 0.3 * PI, 0.27 * PI), hair, 0, 0.13, -0.004, 0, 0, 0, 0.98, 1.05, 1); break;
-      case 'bald': P(hb, new T.SphereGeometry(0.131, 12, 3, PI / 2 + 0.95, TAU - 1.9, 0.36 * PI, 0.2 * PI), hair, 0, 0.13, 0, 0, 0, 0, 0.98, 1.05, 1); break;
-      case 'buzz': capTop(0.129, 0.4); break;
-      case 'quiff': capTop(0.134, 0.42); P(hb, sphG(0.06, 8, 5), hair, 0, 0.25, 0.062, 0.35, 0, 0, 1.45, 0.62, 1.05); P(hb, sphG(0.045, 7, 4), hair, 0.035, 0.255, 0.02, 0.2, 0, 0, 1.4, 0.6, 1.2); break;
-      case 'curly': capTop(0.133, 0.44); [[0, 0.25, 0.04], [0.07, 0.235, 0.02], [-0.07, 0.235, 0.02], [0.05, 0.245, -0.06], [-0.05, 0.245, -0.06], [0, 0.22, -0.11], [0.1, 0.17, -0.06], [-0.1, 0.17, -0.06]].forEach(function (q) { P(hb, cache(_geos, 'curl', function () { return new T.IcosahedronGeometry(0.044, 1); }), hair, q[0], q[1], q[2]); }); break;
-      case 'long': capTop(0.137, 0.5); P(hb, rbox(0.25, 0.32, 0.09, 0.04, 2), hair, 0, 0.03, -0.08); P(hb, rbox(0.045, 0.22, 0.075, 0.02), hair, -0.117, 0.07, 0.005); P(hb, rbox(0.045, 0.22, 0.075, 0.02), hair, 0.117, 0.07, 0.005); break;
-      case 'bob': capTop(0.137, 0.5); P(hb, new T.SphereGeometry(0.145, 12, 5, PI / 2 + 0.8, TAU - 1.6, 0.3 * PI, 0.34 * PI), hair, 0, 0.13, -0.005, 0, 0, 0, 1, 1.05, 1); break;
-      case 'ponytail': capTop(0.136, 0.47); P(hb, sphG(0.03, 6, 5), mul(hair, 0.7), 0, 0.18, -0.125); P(hb, cylG(0.04, 0.012, 0.24, 7), hair, 0, 0.07, -0.16, 0.32, 0, 0); break;
-      case 'bun': capTop(0.136, 0.47); P(hb, sphG(0.062, 9, 7), hair, 0, 0.27, -0.06); break;
-      default: capTop(0.134, 0.42); P(hb, rbox(0.02, 0.05, 0.03, 0.008), hair, -0.122, 0.12, 0.02); P(hb, rbox(0.02, 0.05, 0.03, 0.008), hair, 0.122, 0.12, 0.02);
-    }
-    if (o.beard === 'full') P(hb, new T.SphereGeometry(0.129, 12, 4, PI / 2 - 1.05, 2.1, 0.66 * PI, 0.26 * PI), hair, 0, 0.13, 0.002, 0, 0, 0, 0.98, 1.05, 1);
-    if (o.beard === 'full' || o.beard === 'mustache') P(hb, rbox(0.065, 0.016, 0.02, 0.007), hair, 0, 0.098, 0.123, 0.1);
-    if (o.glasses != null) {
-      P(hb, torG(0.021, 0.0035, 4, 12), o.glasses, -0.042, 0.146, 0.13); P(hb, torG(0.021, 0.0035, 4, 12), o.glasses, 0.042, 0.146, 0.13);
-      P(hb, boxG(0.024, 0.004, 0.004), o.glasses, 0, 0.15, 0.131); P(hb, boxG(0.004, 0.004, 0.1), o.glasses, -0.105, 0.15, 0.08); P(hb, boxG(0.004, 0.004, 0.1), o.glasses, 0.105, 0.15, 0.08);
-    }
-    if (o.earrings != null) { P(hb, sphG(0.009, 5, 4), o.earrings, -0.123, 0.095, 0.005); P(hb, sphG(0.009, 5, 4), o.earrings, 0.123, 0.095, 0.005); }
-    if (o.hat === 'cap' || o.hat === 'guard') {
-      P(hb, new T.SphereGeometry(0.139, 12, 5, 0, TAU, 0, PI * 0.42), o.hatColor, 0, 0.17, 0, -0.08, 0, 0, 1, 0.95, 1);
-      P(hb, cylG(0.1, 0.1, 0.015, 12, false, -PI / 2, PI), mul(o.hatColor, o.hat === 'guard' ? 1 : 0.85), 0, 0.2, 0.08, 0.15, 0, 0, 1, 1, 0.95);
-      P(hb, sphG(0.012, 5, 4), mul(o.hatColor, 0.8), 0, 0.305, 0);
-      if (o.hat === 'guard') P(hb, rbox(0.045, 0.035, 0.012, 0.005), 0xd9a84a, 0, 0.24, 0.128, -0.4);
-    } else if (o.hat === 'visor') {
-      P(hb, cylG(0.14, 0.14, 0.035, 14, true), o.hatColor, 0, 0.2, 0, 0, 0, 0, 1, 1, 1.05);
-      P(hb, cylG(0.11, 0.11, 0.012, 12, false, -PI / 2, PI), o.hatColor, 0, 0.19, 0.1, 0.25, 0, 0, 1, 1, 0.9);
-    }
-    if (o.necklace != null) P(tb, torG(0.062, 0.006, 4, 14), o.necklace, 0, 0.64, 0.02, PI / 2 - 0.3);
-    // ---- brazos ----
-    var longS = o.sleeves !== 'short';
-    [[BN.armL, BN.elbowL, -1], [BN.armR, BN.elbowR, 1]].forEach(function (a) {
-      P(a[0], sphG(0.066, 8, 6), sleeve, 0, -0.005, 0);
-      if (longS) P(a[0], cylG(0.06, 0.052, 0.29, 8), sleeve, 0, -0.145, 0);
-      else { P(a[0], cylG(0.064, 0.06, 0.13, 8), sleeve, 0, -0.065, 0); P(a[0], cylG(0.05, 0.047, 0.18, 8), skin, 0, -0.2, 0); }
-      P(a[1], sphG(0.05, 7, 5), longS ? sleeve : skin, 0, 0, 0);
-      P(a[1], cylG(0.05, 0.043, 0.24, 8), longS ? sleeve : skin, 0, -0.12, 0);
-      if (longS) P(a[1], cylG(0.046, 0.046, 0.03, 8), o.cuff != null ? o.cuff : mul(sleeve, 0.85), 0, -0.235, 0);
-      P(a[1], sphG(0.05, 8, 6), skin, 0, -0.3, 0.004, 0, 0, 0, 0.82, 1.12, 0.72);           // mano
-      P(a[1], sphG(0.022, 5, 4), skin, -a[2] * 0.03, -0.28, 0.032);                           // pulgar
-      if (o.watch != null && a[2] < 0) P(a[1], cylG(0.047, 0.047, 0.025, 8), o.watch, 0, -0.215, 0);
-      if (o.folder && a[2] > 0) P(a[1], rbox(0.26, 0.34, 0.03, 0.01), 0x3a2a14, 0, -0.3, 0.08, 0.3);
-    });
-    // ---- piernas ----
-    var legC = o.top === 'dress' ? skin : pants, shoe = o.shoes, sole = o.sole;
-    [[BN.legL, BN.kneeL], [BN.legR, BN.kneeR]].forEach(function (g2) {
-      P(g2[0], sphG(0.08, 8, 5), legC, 0, -0.01, 0);
-      P(g2[0], cylG(0.082, 0.066, 0.44, 8), legC, 0, -0.22, 0);
-      P(g2[1], sphG(0.064, 7, 5), legC, 0, 0, 0);
-      P(g2[1], cylG(0.064, 0.055, 0.38, 8), legC, 0, -0.19, 0);
-      if (o.top !== 'dress') P(g2[1], cylG(0.06, 0.062, 0.05, 8), mul(legC, 0.85), 0, -0.36, 0);
-      P(g2[1], rbox(0.12, 0.085, 0.27, 0.036, 2), shoe, 0, -0.418, 0.05);
-      P(g2[1], rbox(0.126, 0.025, 0.28, 0.01), sole, 0, -0.4475, 0.05);
-    });
-    return L;
-  }
 
   /** Resuelve las opciones a un "look" completo y determinista (misma key => misma malla). */
   function resolveLook(opts) {
@@ -2092,8 +1858,8 @@
   }
 
   /**
-   * makePerson(opts) -> Group  (~2,000 tris, 1 SkinnedMesh + sombra = 2 draw calls; geometría cacheada por look)
-   * Origin at feet, faces +Z, ~1.8 m tall (scale with opts.height).
+   * makePerson(opts) -> Group  (~1,600 tris, 1 SkinnedMesh + sombra = 2 draw calls; geometría compartida, textura por look)
+   * Origin at feet, faces +Z, ~1.9 m tall (scale with opts.height). Cuerpo: CasinoPeople.build (people.js).
    * opts: { skin, shirt, pants, hair, shoes, uniform:null|'tech'|'security'|'host'|'croupier'|'cashier'|'stock',
    *         vip:false, jacket, cap (color), folder, top, hairStyle, height:1, female:false, blob:true }
    * api: walk(dt, speed=1.4)  - paso con braceo, rebote y balanceo (no mueve el grupo)
@@ -2105,33 +1871,21 @@
    *      face(expr, seconds)  - 'neutral','happy','sad','angry','surprised','dizzy','blink'
    *      knocked(dt)          - pose de desmayado en el piso (el que llama acuesta el grupo)
    *      joints {hips, torso, head, legL, legR, kneeL, kneeR, armL, armR, elbowL, elbowR}  (huesos)
+   *      hipY                 - altura de la cadera parado (para poses hechas a mano, ej. vip.js)
    */
   function makePerson(opts) {
     opts = opts || {};
     var o = resolveLook(opts);
     var root = new T.Group();
-    // huesos en pose de descanso
-    var bones = [];
-    function bone(parent, x, y, z) { var b = new T.Bone(); b.position.set(x, y, z); if (parent) parent.add(b); bones.push(b); return b; }
-    var hips = bone(null, 0, 0.92, 0), torso = bone(hips, 0, 0, 0), head = bone(torso, 0, 0.665, 0); head.scale.setScalar(HEAD_S);
-    var legL = bone(hips, -0.09, -0.02, 0), kneeL = bone(legL, 0, -0.44, 0), legR = bone(hips, 0.09, -0.02, 0), kneeR = bone(legR, 0, -0.44, 0);
-    var sx = o.female ? 0.215 : 0.235;
-    var armL = bone(torso, -sx, 0.585, 0), elbowL = bone(armL, 0, -0.29, 0), armR = bone(torso, sx, 0.585, 0), elbowR = bone(armR, 0, -0.29, 0);
-    var geo = cache(_geos, 'person|' + o.key + '|' + o.female, function () {
-      hips.updateMatrixWorld(true);
-      var rest = bones.map(function (b) { return b.matrixWorld.clone(); });
-      return mergeSkinned(personParts(o), rest);
-    });
-    var mesh = new T.SkinnedMesh(geo, faceMat('neutral'));
-    mesh.add(hips); mesh.updateMatrixWorld(true); mesh.bind(new T.Skeleton(bones));
-    root.add(mesh);
+    // cuerpo (malla de Kenney + huesos del juego + ropa pintada por look): people.js
+    var body = window.CasinoPeople.build(o, root);
+    var J = body.J, HIP = window.CasinoPeople.HIP_Y, SIT = window.CasinoPeople.SIT_OFF, TSY = J.torso.scale.y, Z0 = J.hips.position.z;
     var s = opts.height || 1; root.scale.setScalar(s);
     addBlob(root, 0.7, 0.7, opts);
 
-    var J = { hips: hips, torso: torso, head: head, legL: legL, legR: legR, kneeL: kneeL, kneeR: kneeR, armL: armL, armR: armR, elbowL: elbowL, elbowR: elbowR };
     var seed = Math.random() * 100, phase = Math.random() * TAU, t = Math.random() * 10, sitting = false, seatH = 0.76, cheerT = 0;
     var gest = null, gestT = 0, gestDur = 1, lookY = 0, lookX = 0, lookT = 0, faceName = 'neutral', faceT = 0, blinkT = 1 + Math.random() * 4, fidgetT = 8 + Math.random() * 15, fidget = 0;
-    function setMat(name) { var m = faceMat(name); if (mesh.material !== m) mesh.material = m; }
+    function setMat(name) { body.setFace(name); }
     function lerp(ob, prop, v, k) { ob.rotation[prop] += (v - ob.rotation[prop]) * k; }
     // reloj común: cara (gestos temporales + parpadeo), festejo y gesto del brazo
     function clock(dt) {
@@ -2166,11 +1920,11 @@
         lerp(J.armL, 'x', -2.7 + pump * 0.15, k * 2); lerp(J.armR, 'x', -2.7 - pump * 0.15, k * 2); lerp(J.armL, 'z', -0.4, k * 2); lerp(J.armR, 'z', 0.4, k * 2);
         lerp(J.elbowL, 'x', -0.35 + pump * 0.35, k * 2); lerp(J.elbowR, 'x', -0.35 - pump * 0.35, k * 2);
         lerp(J.head, 'x', -0.2, k); lerp(J.head, 'y', Math.sin(t * 6) * 0.15, k);
-        lerp(J.torso, 'z', Math.sin(t * 6.5) * 0.06, k); J.torso.scale.y = 1;
+        lerp(J.torso, 'z', Math.sin(t * 6.5) * 0.06, k); J.torso.scale.y = TSY;
         return;
       }
       var br = Math.sin(t * 1.9 + seed);
-      J.torso.scale.y = 1 + br * 0.008;
+      J.torso.scale.y = TSY * (1 + br * 0.008);
       lerp(J.torso, 'y', 0, k); lerp(J.torso, 'z', 0, k);
       if (!gestureArm(k)) {
         if (playing) {
@@ -2193,15 +1947,15 @@
     }
     function legsStand(k) {
       var sh = Math.sin(t * 0.31 + seed) * 0.6 + Math.sin(t * 0.17 + seed * 2) * 0.4;   // cambio de peso
-      J.hips.position.y += (0.92 - 0.006 * Math.abs(sh) - J.hips.position.y) * k;
-      J.hips.position.x += (sh * 0.014 - J.hips.position.x) * k;
+      J.hips.position.y += (HIP - 0.006 * Math.abs(sh) - J.hips.position.y) * k;
+      J.hips.position.x += (sh * 0.014 - J.hips.position.x) * k; J.hips.position.z += (Z0 - J.hips.position.z) * k;
       lerp(J.hips, 'z', sh * 0.035, k); lerp(J.hips, 'y', 0, k); lerp(J.hips, 'x', 0, k);
       lerp(J.legL, 'x', 0, k); lerp(J.legR, 'x', 0, k); lerp(J.legL, 'z', -sh * 0.035, k); lerp(J.legR, 'z', -sh * 0.035, k);
       lerp(J.kneeL, 'x', 0.02 + Math.max(0, sh) * 0.1, k); lerp(J.kneeR, 'x', 0.02 + Math.max(0, -sh) * 0.1, k);
       lerp(J.torso, 'x', 0.01, k); lerp(J.torso, 'z', -sh * 0.03, k);
     }
     function legsSit(k) {
-      J.hips.position.y = seatH + 0.06; J.hips.position.x = 0;
+      J.hips.position.y = seatH + SIT; J.hips.position.x = 0; J.hips.position.z = Z0;
       lerp(J.hips, 'z', 0, k); lerp(J.hips, 'y', 0, k); lerp(J.hips, 'x', 0, k);
       var tap = Math.max(0, Math.sin(t * 5 + seed)) * (Math.sin(t * 0.4 + seed) > 0.6 ? 0.12 : 0);   // golpecito con el pie
       lerp(J.legL, 'x', -1.5, k); lerp(J.legR, 'x', -1.45, k); lerp(J.legL, 'z', -0.06, k); lerp(J.legR, 'z', 0.06, k);
@@ -2209,7 +1963,7 @@
       lerp(J.torso, 'x', 0.12, k);
     }
     var api = {
-      joints: J, mesh: mesh, get sitting() { return sitting; },
+      joints: J, hipY: HIP, get mesh() { return body.mesh; }, get sitting() { return sitting; },
       walk: function (dt, speed) {
         speed = speed == null ? 1.4 : speed; sitting = false; clock(dt); fidget = 0;
         var amp = Math.min(1.25, speed / 1.4), run = Math.max(0, Math.min(1, (speed - 2.4) / 1.6));
@@ -2217,11 +1971,11 @@
         var sw = Math.sin(phase), cw = Math.cos(phase), k = Math.min(1, dt * 16);
         lerp(J.legL, 'x', -sw * 0.52 * amp, k); lerp(J.legR, 'x', sw * 0.52 * amp, k); lerp(J.legL, 'z', 0, k); lerp(J.legR, 'z', 0, k);
         lerp(J.kneeL, 'x', (0.1 + 0.8 * Math.max(0, cw)) * amp, k); lerp(J.kneeR, 'x', (0.1 + 0.8 * Math.max(0, -cw)) * amp, k);
-        J.hips.position.y += (0.92 - 0.022 * amp + Math.abs(cw) * 0.034 * amp - J.hips.position.y) * k;
-        J.hips.position.x += (0 - J.hips.position.x) * k;
+        J.hips.position.y += (HIP - 0.018 * amp + Math.abs(cw) * 0.026 * amp - J.hips.position.y) * k;
+        J.hips.position.x += (0 - J.hips.position.x) * k; J.hips.position.z += (Z0 - J.hips.position.z) * k;
         lerp(J.hips, 'y', sw * 0.09 * amp, k); lerp(J.hips, 'z', cw * 0.025 * amp, k); lerp(J.hips, 'x', 0, k);
         lerp(J.torso, 'y', -sw * 0.16 * amp, k); lerp(J.torso, 'x', 0.05 * amp + run * 0.16, k); lerp(J.torso, 'z', -cw * 0.02 * amp, k);
-        J.torso.scale.y = 1;
+        J.torso.scale.y = TSY;
         if (cheerT > 0) upper(k, false);
         else if (!gestureArm(k)) {
           lerp(J.armL, 'x', sw * 0.62 * amp, k); lerp(J.armR, 'x', -sw * 0.62 * amp, k);
@@ -2241,21 +1995,21 @@
       play: function (dt) { clock(dt); fidget = 0; var k = Math.min(1, dt * 6); if (sitting) legsSit(k); else legsStand(k); upper(k, true); },
       sit: function (h) {
         sitting = true; seatH = h == null ? 0.76 : h;
-        J.hips.position.set(0, seatH + 0.06, 0); J.hips.rotation.set(0, 0, 0);
+        J.hips.position.set(0, seatH + SIT, Z0); J.hips.rotation.set(0, 0, 0);
         J.legL.rotation.set(-1.5, 0, -0.06); J.legR.rotation.set(-1.45, 0, 0.06); J.kneeL.rotation.x = 1.45; J.kneeR.rotation.x = 1.4;
         J.armL.rotation.x = -0.6; J.armR.rotation.x = -0.7; J.elbowL.rotation.x = -0.85; J.elbowR.rotation.x = -0.8; J.torso.rotation.x = 0.12;
       },
       stand: function () {
-        sitting = false; gest = null; fidget = 0; J.hips.position.set(0, 0.92, 0);
+        sitting = false; gest = null; fidget = 0; J.hips.position.set(0, HIP, Z0);
         [J.hips, J.legL, J.legR, J.kneeL, J.kneeR, J.armL, J.armR, J.elbowL, J.elbowR, J.torso, J.head].forEach(function (b) { b.rotation.set(0, 0, 0); });
-        J.torso.scale.y = 1;
+        J.torso.scale.y = TSY;
       },
       cheer: function (sec) { cheerT = sec || 1.2; gest = null; },
       gesture: function (name, dur) { gest = name; gestT = 0; gestDur = dur || (name === 'lever' ? 0.9 : name === 'swing' ? 1.0 : 0.45); },
       face: function (name, sec) { faceName = name || 'neutral'; faceT = sec || 2; setMat(faceName); },
       knocked: function (dt) { // tirado en el piso, mareado
         clock(dt); var k = Math.min(1, dt * 8);
-        J.hips.position.y += (0.92 - J.hips.position.y) * k; J.hips.position.x = 0;
+        J.hips.position.y += (HIP - J.hips.position.y) * k; J.hips.position.x = 0; J.hips.position.z += (Z0 + 0.09 - J.hips.position.z) * k; // la nuca de Kenney es más honda: que no se hunda en el piso
         lerp(J.legL, 'x', -0.08, k); lerp(J.legR, 'x', 0.05, k); lerp(J.legL, 'z', -0.22, k); lerp(J.legR, 'z', 0.25, k); lerp(J.kneeL, 'x', 0.25, k); lerp(J.kneeR, 'x', 0.05, k);
         lerp(J.armL, 'x', -0.3, k); lerp(J.armR, 'x', -0.2, k); lerp(J.armL, 'z', -1.35, k); lerp(J.armR, 'z', 1.25, k); lerp(J.elbowL, 'x', -0.5, k); lerp(J.elbowR, 'x', -0.2, k);
         lerp(J.torso, 'x', 0, k); lerp(J.torso, 'z', 0, k); lerp(J.torso, 'y', 0, k);
