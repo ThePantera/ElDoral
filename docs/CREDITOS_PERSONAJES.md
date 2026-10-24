@@ -36,3 +36,27 @@ personaje **"characterMedium" de Kenney** (pack *Animated Characters*, <https://
 | Zapatos | 640..830 × 0..520 | suelas en y 20..130 |
 | Pantalón | 620..1024 × 770..1024 | cintura arriba, botamanga abajo; las dos piernas una al lado de la otra |
 | Libre | 0..150 × 840..1020 | parches de color para gorra, visera, insignia y carpeta (geometría extra pegada a los huesos) |
+
+## Props de la calle (autos, palmeras, árboles, bancos)
+
+Los objetos de afuera que no están dibujados por código vienen del mismo repo público `pmndrs/market-assets` (GitHub),
+todos con `"license": 1` = **CC0 1.0 (dominio público)** según `pmndrs/market` (`src/helpers/constants/licenses.js`).
+
+| Modelo en el juego | Carpeta en `files/models/` | Autor (`info.json`) | Licencia |
+|---|---|---|---|
+| Sedán | `sedan` | Kenney (www.kenney.nl) | CC0 1.0 |
+| Taxi | `taxi` | Kenney | CC0 1.0 |
+| Patrullero | `police-car` | Kenney | CC0 1.0 |
+| Camioneta de lujo (también la de la Mafia) | `suv-luxury` | Kenney | CC0 1.0 |
+| Utilitario | `van` | Kenney | CC0 1.0 |
+| Hatchback | `hatchback` | Kenney | CC0 1.0 |
+| Palmera | `palm-detailed-short` | Kenney | CC0 1.0 |
+| Árbol | `tree-small` | Kenney | CC0 1.0 |
+| Banco de plaza | `bench` | saravieira | CC0 1.0 |
+
+Qué se cambió: se les sacó la compresión Draco y se **hornearon offline** (Node + `@gltf-transform`) a un solo `.glb`
+de ~450 KB: sin coordenadas de textura, centrados, a escala del juego (los autos de ~4,3 m con el frente hacia +X y,
+al cargarlos, un poco más bajos y angostos que el original), con el color de cada material pasado a color por vértice,
+los vidrios oscurecidos y las posiciones en enteros de 16 bits (`KHR_mesh_quantization`). Va embebido en base64 en
+`js/props-assets.js` (unos 610 KB) y lo lee `js/exterior.js` con `lib/GLTFLoader.js`, así el juego sigue abriendo con
+doble clic. La chapa de los autos se tiñe por código (colores al azar; el taxi amarillo).

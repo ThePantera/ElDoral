@@ -177,6 +177,8 @@ function applySky(real) {
   inFog += ((inside ? 1 : 0) - inFog) * Math.min(1, (real || 0) * 2.5);
   if (sc.fog) { sc.fog.color.copy(cSky).multiplyScalar(0.92).lerp(cFogIn, inFog); sc.fog.near = sk.fogNear + (FOG_IN.near - sk.fogNear) * inFog; sc.fog.far = sk.fogFar + (FOG_IN.far - sk.fogFar) * inFog; }
   sky.bg = cSky.getHex();
+  // exterior.js: cúpula del cielo, estrellas, ventanas de la ciudad, faroles y tránsito siguen este mismo cielo
+  if (window.CasinoExterior) window.CasinoExterior.sky(cSky, hourF(), real, id, f);
   if (G.moon) { G.moon.color.copy(cSun); G.moon.intensity = sk.sunI + f * 2.6; sky.sun = G.moon.color.getHex(); }
   // el apagón de life.js baja el resto de las luces: en ese momento no las tocamos
   const out = window.CasinoLife && window.CasinoLife.outage;
