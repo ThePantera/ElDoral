@@ -620,6 +620,8 @@ const carMat = {
 };
 const geo = { body: new T.BoxGeometry(4.4, 0.62, 1.85), cab: new T.BoxGeometry(2.2, 0.55, 1.65), wheel: new T.CylinderGeometry(0.36, 0.36, 0.24, 14), lamp: new T.BoxGeometry(0.06, 0.16, 0.34), bar: new T.BoxGeometry(0.1, 0.12, 1.7) };
 function makeCar() {
+  // exterior.js: si ya cargaron los modelos de Kenney, la Mafia llega en una camioneta negra de lujo
+  const k = window.CasinoExterior && window.CasinoExterior.car("suvlux", { paint: 0x111216 }); if (k) return k;
   const g = new T.Group();
   const b = new T.Mesh(geo.body, carMat.body); b.position.y = 0.62; g.add(b);
   const c = new T.Mesh(geo.cab, carMat.glass); c.position.set(-0.2, 1.17, 0); g.add(c);
@@ -796,6 +798,8 @@ const polMat = {
 };
 const polGeo = { stripe: new T.BoxGeometry(4.42, 0.14, 1.87), light: new T.BoxGeometry(0.3, 0.14, 0.5) };
 function makePatrol() {
+  // exterior.js: patrullero de Kenney; las balizas usan los mismos materiales (las prende y apaga updatePolice)
+  const k = window.CasinoExterior && window.CasinoExterior.car("police", { paint: 0xe9edf2, red: polMat.red, blue: polMat.blue }); if (k) return k;
   const g = new T.Group();
   const b = new T.Mesh(geo.body, polMat.body); b.position.y = 0.62; g.add(b);
   const st = new T.Mesh(polGeo.stripe, polMat.stripe); st.position.y = 0.66; g.add(st);
