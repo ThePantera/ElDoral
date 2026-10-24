@@ -580,6 +580,7 @@
   window.CASINO_DATA.COMBAT = {
     key: "KeyF", keyLabel: "F",           // equipar / guardar el arma (cambia entre las que tengas); clic izquierdo ataca
     weapons: [
+      { id: "fists",  name: "Puño limpio",          kind: "melee",  rank: 1, price: 0,    dmg: 12, range: 1.6, cd: 0.38, hit: 0.5,  free: true, desc: "Siempre los tenés. Piñas a lo dibujito: no rompen máquinas (te duele la mano)." },
       { id: "knife",  name: "Cuchillo de cocina",   kind: "melee",  rank: 1, price: 150,  dmg: 22, range: 1.9, cd: 0.45, hit: 0.75, desc: "Arma blanca. Corto y rápido; rompe pantallas." },
       { id: "bat",    name: "Bate de béisbol",      kind: "melee",  rank: 2, price: 320,  dmg: 34, range: 2.5, cd: 0.8,  hit: 0.95, desc: "Arma blanca. Pega fuerte y tiene alcance; las máquinas lo sienten." },
       { id: "pistol", name: "Pistola 9 mm",        kind: "ranged", rank: 4, price: 1800, dmg: 60, range: 30,  cd: 0.4,  hit: 0.28, desc: "Arma de fuego con permiso de tenencia. Un disparo se oye en todo el salón." },
@@ -591,6 +592,25 @@
     security: { runSpeed: 5.4, helpDelay: 1.2, swingSec: 0.9, tempSec: 22 },
     blood: { cleanCost: 450, cleanSec: 7, atr: 6, repHit: -8, heatHit: 14, repMelee: -3, heatMelee: 4, max: 6 },
     mafia: { hour: 21, shootSec: 14, gunmen: 6, cars: 3, rep: -18, heat: 22, repHit: -2, speak: "Te metiste contra la Mafia" },
+    fists: { machineHurt: 4 },  // pegarle a una máquina con la mano: no la rompe y te saca salud
+    staff: { hp: 70, secHp: 120, hit: 12, secHit: 20 }, // el personal también se defiende si le pegás
+    // ESCÁNDALO: cada pelea, disparo o tiroteo lo sube (el tuyo, el de los clientes o el de la Mafia); baja solo con el tiempo.
+    // Al llegar a "max" alguien llama al 911: llega una patrulla que despeja el salón y se lleva detenido a cualquiera que tenga adelante.
+    riot: {
+      max: 100, decayPerSec: 3.5,
+      playerHit: 10, playerKo: 10, playerShot: 30, playerMachine: 5, // vos (puño, arma blanca, pistola)
+      customerHit: 4,       // cada piña que te mete un cliente o un empleado
+      fightPerSec: 8,       // pelea entre clientes (life.js), por segundo: si nadie la separa, al final cae la policía
+      mafiaArrive: 100, mafiaPerSec: 18, // la Mafia llegando ya hace que los vecinos llamen al 911
+      blameRecentSec: 12,   // si pegaste hace menos de esto, la policía también te busca a vos
+    },
+    police: {
+      delay: 8, officers: 4, cars: 2, walkSpeed: 3.9, runSpeed: 5.0,
+      sweepMin: 14, sweepMax: 42, grab: 1.05, bump: 0.85, // "bump": te tiene adelante y te lleva puesto
+      scareR: 6, scareChance: 0.35, cooldown: 45,
+      jailSec: 4.5, jailHours: 2, fine: 900, pocketLoss: 0.25, rep: -4, heat: 10, // si te llevan a vos
+      perArrestRep: -1, perArrestHeat: 1.5,
+    },
   };
 
   // ---------------------------------------------------------------

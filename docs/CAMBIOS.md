@@ -1,5 +1,15 @@
 # Casino Dorado · v2 — Cambios
 
+## Piñas y la policía (combat.js)
+
+- **Puño limpio:** siempre lo tenés, sin comprar nada. Con **F** cambiás entre puños, cuchillo, bate, pistola y nada en la mano. Las piñas son a lo dibujito (¡PUM!, ¡PAF!) y alternan mano izquierda y derecha. A una máquina no la rompés con la mano: te duele a vos.
+- **Todos se defienden:** los clientes ya lo hacían; ahora también el personal. Si le pegás a un empleado deja lo que estaba haciendo, te devuelve las piñas (el de seguridad pega más fuerte) y, cuando se calma o se levanta, vuelve a su puesto.
+- **Escándalo:** una barrita abajo al centro. La suben tus piñas y disparos, las peleas entre clientes que nadie separa y la Mafia. Baja sola con el tiempo.
+- **Policía:** si el escándalo llega al tope, alguien llama al 911. A los 8 segundos llegan dos patrulleros con balizas y cuatro policías que entran a despejar el salón: se llevan esposado a cualquiera que esté peleando (clientes, pistoleros de la Mafia, vos si pegaste hace poco) y también **a cualquiera que tengan adelante**, vos incluido. A los empleados que están peleando solo los calman. Los clientes se asustan y se van.
+- **Si te llevan a vos:** pantalla de rejas, multa de $900 (por `Economy`, categoría Multas), te sacan un 25 % del bolsillo y perdés 2 horas del día. Volvés a la entrada con la salud llena.
+- **Contra la Mafia:** la llegada de la Mafia ya hace que los vecinos llamen. Si la policía se lleva a todos los pistoleros a tiempo, el tiroteo se corta y el personal que todavía no cayó se salva.
+- Sin luces nuevas (las balizas son solo color). Números en `data.js` (`COMBAT.riot`, `COMBAT.police`, `COMBAT.staff`, `COMBAT.fists`). Partidas viejas cargan igual y ya tienen los puños.
+
 ## Volver cada día (daily.js)
 
 - **Premio del día:** la primera vez que entrás cada día (según la fecha de tu compu) aparece un cartel con la racha de 7 días: $300, $500, $800, $1.200, $1.800, $2.500 y $4.000, más experiencia. Si volvés días seguidos la racha sube; del día 7 en adelante te quedás en el premio más alto. Si te salteás un día, la racha vuelve a empezar (se guarda tu mejor racha). Cada rango arriba del 1 suma 35 % a la plata.

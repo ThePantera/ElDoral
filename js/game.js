@@ -2792,7 +2792,7 @@ function start(hotData) {
     $("titleKeys").innerHTML = `<kbd>Joystick</kbd><span>Caminar</span><kbd>Arrastrar</kbd><span>Mirar</span><kbd>Usar</kbd><span>Tocar o mantener apretado: comprar, vaciar cajas, reparar, depositar</span><kbd>Opciones</kbd><span>Ajustes de la máquina o mesa que mirás</span><kbd>Gestión</kbd><span>Personal, banco y objetivos</span>`;
     $("mgmtTopBtn").hidden = true;
   } else {
-    $("titleKeys").innerHTML = `<kbd>WASD</kbd><span>Caminar (Shift para correr)</span><kbd>Mouse</kbd><span>Mirar</span><kbd>E</kbd><span>Usar · mantené para vaciar cajas y depositar</span><kbd>R</kbd><span>Opciones de lo que mirás: pago, vender</span><kbd>P K O</kbd><span>Personal · Banco · Objetivos</span><kbd>H M</kbd><span>Historia · Sonido</span><kbd>1 2 3 · N</kbd><span>Velocidad · abrir ya</span><kbd>U</kbd><span>Licencias y mejoras</span><kbd>G</kbd><span>Soltar la caja que llevás</span><kbd>L</kbd><span>Logros y ranking</span><kbd>F</kbd><span>Equipar arma (la comprás en la compu) · clic: atacar</span><kbd>Esc</kbd><span>Menú y pausa</span>`;
+    $("titleKeys").innerHTML = `<kbd>WASD</kbd><span>Caminar (Shift para correr)</span><kbd>Mouse</kbd><span>Mirar</span><kbd>E</kbd><span>Usar · mantené para vaciar cajas y depositar</span><kbd>R</kbd><span>Opciones de lo que mirás: pago, vender</span><kbd>P K O</kbd><span>Personal · Banco · Objetivos</span><kbd>H M</kbd><span>Historia · Sonido</span><kbd>1 2 3 · N</kbd><span>Velocidad · abrir ya</span><kbd>U</kbd><span>Licencias y mejoras</span><kbd>G</kbd><span>Soltar la caja que llevás</span><kbd>L</kbd><span>Logros y ranking</span><kbd>F</kbd><span>Puños o arma en mano (las armas se compran en la compu) · clic: atacar</span><kbd>Esc</kbd><span>Menú y pausa</span>`;
   }
   if (window.innerWidth < 560 || window.innerHeight < 460) { $("hud").classList.add("compact"); $("hudToggle").textContent = "Más"; }
   const text = (hotData && hotData.save) || readSaveRaw();
@@ -2945,7 +2945,7 @@ window.CasinoCombatBridge = {
   get S() { return S; }, get isOpen() { return isOpen; }, get started() { return started; },
   D, CFG, DOOR, KEY, isTouch, scene, camera, ui, player, customers, machines, tables, staffNpcs, colliders,
   Economy, Rep, Heat, Rank, SFX, sfx, toast, hint, fmt, floatText, setIcon, setBar, save, updateHud, openPanel, closePanel,
-  proxy, dropProxy, findPath, goTo, stepAgent, placeAgent, faceTo, turnToward, streetPoint, leaveCustomer, releaseGame, breakMachine, repairMachine,
+  proxy, dropProxy, findPath, goTo, stepAgent, placeAgent, faceTo, turnToward, streetPoint, leaveCustomer, despawnCustomer, releaseGame, breakMachine, repairMachine,
   fireNpc, assignDealers, acquirePerson, releasePerson, blocked, backHome, idleOf, near, attractiveness,
 };
 
