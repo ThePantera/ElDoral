@@ -249,7 +249,11 @@ const canvas = $("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch && (!window.CasinoPerf || window.CasinoPerf.antialias), powerPreference: "high-performance" });
 // color: tono fílmico (ACES) para lo iluminado; carteles, pantallas, neones e íconos (materiales sin luz) quedan fuera
 // del tono para que brillen más que el resto (falso "bloom" sin posproceso)
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.22;
+// salida en sRGB: la luz se calcula en lineal y recién al final se convierte (perf.js pasa los colores hex a lineal y marca
+// las texturas de canvas como sRGB). Sin esto los colores se veían lavados y la luz pareja, "de juguete".
+renderer.outputEncoding = THREE.sRGBEncoding;
+// en "Alta" la luz es por píxel (PBR) y rinde más que la luz por vértice de los materiales rápidos: un poco menos de exposición
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = window.CasinoPerf && !window.CasinoPerf.fast ? 1.05 : 1.22;
 const _untoned = new WeakSet();
 function untone(root) {
   root.traverse(o => {
@@ -309,8 +313,9 @@ function resize() {
 window.addEventListener("resize", resize);
 
 // luces (cantidad fija: nunca se agregan luces en tiempo de juego)
-scene.add(new THREE.HemisphereLight(0xfff1d6, 0x2a1a10, 0.6));
-for (const x of [-16, -5.5, 5.5, 16]) { const l = new THREE.PointLight(0xffd9a0, 0.95, 24, 1.5); l.position.set(x, 3.1, 1); scene.add(l); }
+// paso 1: con la luz en lineal, el hemisferio (luz pareja) baja y los focos cálidos suben: más contraste
+scene.add(new THREE.HemisphereLight(0xffe6c4, 0x1a0c08, 0.6));
+for (const x of [-16, -5.5, 5.5, 16]) { const l = new THREE.PointLight(0xffc98a, 1.6, 22, 1.4); l.position.set(x, 3.1, 1); scene.add(l); }
 const moon = new THREE.DirectionalLight(0x8fa6d6, 0.35); moon.position.set(-10, 20, -15); scene.add(moon);
 const hemi = scene.children.find(o => o.isHemisphereLight); // world.js: ciclo de día y noche
 
@@ -368,15 +373,46 @@ for (let x = -50; x <= 50; x += 4) box(2, 0.022, 0.15, M.lane, x, 0.001, -20.5, 
 box(110, 0.04, 6.4, M.walk, 0, 0.0, -13.6, false);
 box(110, 0.04, 4, M.walk, 0, 0.0, -26, false);
 const carpetTex = A.makeCarpetTexture({ repeat: [22, 10] });
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(44, 20, SEG(44), SEG(20)), new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.95 }));
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(44, 20, SEG(44), SEG(20)), new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 1 }));
 floor.rotation.x = -Math.PI / 2; floor.position.y = 0.002; scene.add(floor);
-const ceil = new THREE.Mesh(new THREE.PlaneGeometry(44, 20, SEG(44), SEG(20)), repMat(WM.ceiling, 11, 5)); ceil.rotation.x = Math.PI / 2; ceil.position.y = WALL_H; scene.add(ceil);
+const ceil = new THREE.Mesh(new THREE.PlaneGeometry(44, 20, SEG(44), SEG(20)), repMat(WM.ceiling, 20, 10)); ceil.rotation.x = Math.PI / 2; ceil.position.y = WALL_H; scene.add(ceil);
+// techo artesonado: vigas con filetes dorados y un spot falso por casetón (casetones de 2,2 x 2 m, igual que la textura)
+const coffers = A.makeCofferedCeiling ? A.makeCofferedCeiling({ x0: -22, x1: 22, z0: -10, z1: 10, y: WALL_H, cx: 2.2, cz: 2.0 }) : null;
+if (coffers) { scene.add(coffers); animated.push({ update() { coffers.api.setOn(!(window.CasinoLife && window.CasinoLife.outage)); } }); } // apagón (life.js): spots apagados
 wall(0, 10, 44.3, true, 4);
 wall(-12.5, -10, 19, true, 5); wall(12.5, -10, 19, true, 5);
 wall(-22, 0, 20, false, 1); wall(22, 0, 20, false, 0);
 const facade = A.makeFacade({ width: 14 }); facade.rotation.y = Math.PI; facade.position.set(0, 0, -10.16); scene.add(facade); animated.push(facade.api); gfxLights = (facade.api && facade.api.lights) || []; gfxApply();
-for (const [x, z] of [[0, 2.5], [-6, -4], [6, -4], [16, -3], [-16.5, -3]]) {
+const CHANDELIERS = [[0, 2.5], [-6, -4], [6, -4], [16, -3], [-16.5, -3]];
+for (const [x, z] of CHANDELIERS) {
   const ch = A.makeChandelier({ light: false }); ch.position.set(x, WALL_H, z); scene.add(ch); if (ch.api) animated.push(ch.api);
+}
+// luz falsa (cero luces nuevas): charcos cálidos en el piso bajo las arañas y frente a los carteles de neón,
+// oscurecido al pie de las paredes y pilastras cada tantos metros
+if (A.makeFloorGlows) {
+  scene.add(A.makeFloorGlows([
+    ...CHANDELIERS.map(([x, z]) => ({ x, z, r: 2.9, color: 0xffb466, k: 0.2 })),
+    ...CHANDELIERS.map(([x, z]) => ({ x, z, r: 1.2, color: 0xffd29a, k: 0.14 })),
+    { x: 0, z: 8.9, rx: 2.6, rz: 1.1, color: 0xff3fa4, k: 0.16 }, { x: -6.2, z: 9.0, rx: 1.7, rz: 0.9, color: 0xff6a3a, k: 0.14 },
+    { x: 6.2, z: 9.0, rx: 1.7, rz: 0.9, color: 0x4fe0ff, k: 0.12 }, { x: 16, z: 9.0, rx: 1.8, rz: 0.9, color: 0x40c8ff, k: 0.12 },
+    { x: -16.5, z: 9.0, rx: 2.1, rz: 0.9, color: 0xc84cff, k: 0.14 },
+  ]));
+}
+if (A.makeEdgeShade) {
+  const IN = 9.85, OX = 21.85;
+  scene.add(A.makeEdgeShade([
+    { x0: -OX, z0: IN, x1: OX, z1: IN, nx: 0, nz: -1, w: 1.6 },
+    { x0: -OX, z0: -IN, x1: -3, z1: -IN, nx: 0, nz: 1, w: 1.6 }, { x0: 3, z0: -IN, x1: OX, z1: -IN, nx: 0, nz: 1, w: 1.6 },
+    { x0: -OX, z0: -IN, x1: -OX, z1: IN, nx: 1, nz: 0, w: 1.6 }, { x0: OX, z0: -IN, x1: OX, z1: IN, nx: -1, nz: 0, w: 1.6 },
+  ], { opacity: 0.6 }));
+}
+if (A.makePilasters) {
+  // separadas de carteles, puertas y muebles contra la pared (estantería VIP en x=-3, tablero en x=-9.3, barra, caja)
+  const IN = 9.85, OX = 21.85, P = [];
+  for (const x of [-19.6, -13, -10, -4.4, 3.4, 10, 13, 19.6]) P.push({ x, z: IN, ry: Math.PI });
+  for (const x of [-19.6, -13, -10, 10, 13, 19.6]) P.push({ x, z: -IN, ry: 0 });
+  for (const z of [-6.6, 1.2, 6.4]) { P.push({ x: -OX, z, ry: Math.PI / 2 }); P.push({ x: OX, z, ry: -Math.PI / 2 }); }
+  scene.add(A.makePilasters(P, { h: WALL_H }));
 }
 // neones: tubo corrido bajo el cielorraso (ámbar en el salón, celeste en el ala este, violeta en el salón VIP) y carteles
 if (A.makeCoveLights) {
@@ -652,20 +688,25 @@ const zoneWalls = {};
 for (const zone of D.ZONES) {
   if (!zone.side) continue;
   const wx = zone.side * 10;
-  const tex = A.canvasTex(1688, 300, (g, w, h) => {
-    g.fillStyle = "#2a2f33"; g.fillRect(0, 0, w, h);
-    g.strokeStyle = "#3a4045"; g.lineWidth = 3; for (let x = 0; x < w; x += 60) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-    const bw = 340, bx = (w - bw) / 2;
-    g.fillStyle = "#f3e9d2"; g.fillRect(bx, 60, bw, 170);
+  // paso 1: la pared de obra ya no es gris chapa: mismo empapelado, zócalo y pilastras que el resto del salón,
+  // con el "SE VENDE" como un cartel de bronce enmarcado colgado al medio
+  const tex = A.canvasTex(512, 300, (g, w, h) => {
+    g.fillStyle = "#120a06"; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "#b88d42"; g.lineWidth = 6; g.strokeRect(8, 8, w - 16, h - 16);
+    g.strokeStyle = "rgba(184,141,66,0.5)"; g.lineWidth = 2; g.strokeRect(22, 22, w - 44, h - 44);
     g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillStyle = "#d4423f"; g.font = "bold 46px Georgia, serif"; g.fillText("SE VENDE", w / 2, 98);
-    g.fillStyle = "#07140f"; g.font = "bold 26px Arial, sans-serif"; g.fillText(zone.name, w / 2, 140);
-    g.font = "bold 34px monospace"; g.fillText(fmt(zone.price), w / 2, 180);
-    g.font = "bold 20px Arial, sans-serif"; g.fillStyle = "#8a6a2c"; g.fillText("Rango " + zone.rank, w / 2, 212);
+    g.fillStyle = "#e6c27a"; g.font = "bold 64px Georgia, serif"; g.fillText("SE VENDE", w / 2, 78);
+    g.fillStyle = "#f3e9d2"; g.font = "bold 30px Georgia, serif"; g.fillText(zone.name, w / 2, 140);
+    g.fillStyle = "#e6c27a"; g.font = "bold 40px monospace"; g.fillText(fmt(zone.price), w / 2, 196);
+    g.font = "bold 22px Arial, sans-serif"; g.fillStyle = "#9a7a44"; g.fillText("Rango " + zone.rank, w / 2, 248);
   });
-  const plain = new THREE.MeshStandardMaterial({ color: 0x2a2f33 }), signed = new THREE.MeshStandardMaterial({ map: tex });
-  const faceMats = zone.side > 0 ? [plain, signed, plain, plain, plain, plain] : [signed, plain, plain, plain, plain, plain];
-  const m = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, WALL_H, 19.7, 1, SEG(WALL_H), SEG(19.7)), faceMats); m.position.set(wx, WALL_H / 2, 0); scene.add(m);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(WALL_T, WALL_H, 19.7, 1, SEG(WALL_H), SEG(19.7)), repMat(WM.wall, 19.7 / 2, 1)); m.position.set(wx, WALL_H / 2, 0); scene.add(m);
+  const wain = new THREE.Mesh(new THREE.BoxGeometry(WALL_T + 0.04, 0.9, 19.7, 1, 1, SEG(19.7)), repMat(WM.wainscot, 19.7 / 2, 1)); wain.position.y = 0.45 - WALL_H / 2; m.add(wain);
+  const face = -zone.side; // lado que da al salón principal
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.11), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35 }));
+  sign.position.set(face * (WALL_T / 2 + 0.03), 1.75 - WALL_H / 2, 0); sign.rotation.y = face * Math.PI / 2; m.add(sign);
+  if (A.makePilasters) { const pl = A.makePilasters([-6.6, 1.2, 6.4].map(z => ({ x: face * WALL_T / 2, z, ry: face * Math.PI / 2 })), { h: WALL_H }); pl.position.y = -WALL_H / 2; m.add(pl); }
+  if (A.makeEdgeShade) { const es = A.makeEdgeShade([{ x0: face * WALL_T / 2, z0: -9.85, x1: face * WALL_T / 2, z1: 9.85, nx: face, nz: 0, w: 1.6 }], { opacity: 0.6, y: 0.006 - WALL_H / 2 }); m.add(es); }
   addCollider(wx - WALL_T / 2, wx + WALL_T / 2, -9.85, 9.85, "zonewall", () => !S.zones[zone.id]);
   proxy(m, 0.6, WALL_H, 19.7, { prompt: () => ({ text: `Ampliar: ${zone.name} (${fmt(zone.price)})`, sub: S.rank < zone.rank ? `Necesitás rango ${zone.rank}` : `${zone.slots} lugares para máquinas, ${zone.tableSpots} para mesas` }), hold: () => 0, use: () => openZonePanel(zone) }, 0, 0, 0).position.y = 0;
   zoneWalls[zone.id] = m;

@@ -947,7 +947,7 @@ function wallMat(color, len) {
     wallBase[color] = all.wall;
   }
   const m = wallBase[color].clone(); m.map = wallBase[color].map.clone(); m.map.needsUpdate = true;
-  m.map.wrapS = m.map.wrapT = T.RepeatWrapping; m.map.repeat.set(len / 2, 2.6 / 3.5);
+  m.map.wrapS = m.map.wrapT = T.RepeatWrapping; m.map.repeat.set(len / 2, 2.6 / 3.5); m.map.offset.y = 1 - 2.6 / 3.5; // arriba coincide con el friso
   return (wallMats[k] = m);
 }
 function zoneWallSegs(z) {

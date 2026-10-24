@@ -78,8 +78,8 @@
     get woodDark() { return woodMat(PAL.woodDark, 0.42); },
     get ivory() { return std(PAL.ivory, 0.55, 0); },
     get marble() { return std(PAL.marble, 0.3, 0); },
-    get leatherRed() { return std(0x8e1f26, 0.5, 0); },
-    get velvet() { return std(0x8a1022, 0.85, 0, 0x1a0206); },
+    get leatherRed() { return std(0x4e1217, 0.65, 0); }, // bordó cuero (paso 1: antes rojo chillón)
+    get velvet() { return std(0x5a0c18, 0.85, 0, 0x120104); },
     get feltGreen() { return std(PAL.felt2, 0.95, 0); },
     get padding() { return std(0x2a1410, 0.5, 0); },
     get bulbOn() { return basic(0xfff1c4); },
@@ -217,6 +217,8 @@
     var c = document.createElement('canvas'); c.width = w; c.height = h;
     var g = c.getContext('2d'); draw(g, w, h);
     var t = new T.CanvasTexture(c); t.anisotropy = 4;
+    // color en sRGB (el renderer sale en sRGB): sin esto lo pintado en el canvas se ve lavado. opts.linear para datos.
+    t.encoding = opts && opts.linear ? T.LinearEncoding : T.sRGBEncoding;
     if (opts && opts.repeat) { t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(opts.repeat[0], opts.repeat[1]); }
     t.userData = { canvas: c, ctx: g };
     return t;
@@ -258,35 +260,40 @@
    * opts: { repeat:[x,y] = [22,10], base, line, accent }   1 tile = 2x2 m at default.
    */
   function makeCarpetTexture(opts) {
+    // Paso 1 (color y luz): fondo oscuro y apagado, dibujo chico y fino tono sobre tono, para que el piso no compita
+    // con las máquinas. Una baldosa de textura = 2 x 2 m; adentro van 8 x 8 motivos de 25 cm.
     opts = opts || {};
-    var base = opts.base || '#4a0f1a', line = opts.line || '#b8873a', accent = opts.accent || '#1d5a4f';
+    var base = opts.base || '#260a0f', line = opts.line || '#8a6a34', accent = opts.accent || '#3a1016';
     var t = canvasTex(512, 512, function (g, w, h) {
       g.fillStyle = base; g.fillRect(0, 0, w, h);
-      // subtle pile noise
-      noise(g, w, h, 0, 2600, 'rgba(0,0,0,0.12)'); noise(g, w, h, 0, 1400, 'rgba(255,200,170,0.05)');
-      // diamond lattice
-      g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 10;
-      function lattice() { for (var i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(i * 256, 0); g.lineTo(i * 256 + 512, 512); g.stroke(); g.beginPath(); g.moveTo(i * 256 + 512, 0); g.lineTo(i * 256, 512); g.stroke(); } }
-      lattice(); g.strokeStyle = line; g.globalAlpha = 0.7; g.lineWidth = 3; lattice(); g.globalAlpha = 1;
-      // medallions at lattice centres
-      function medallion(x, y, s) {
-        g.save(); g.translate(x, y);
-        g.fillStyle = accent; g.beginPath(); g.arc(0, 0, 46 * s, 0, TAU); g.fill();
-        g.strokeStyle = line; g.lineWidth = 3; g.stroke();
-        g.fillStyle = line;
-        for (var k = 0; k < 8; k++) { g.rotate(PI / 4); g.beginPath(); g.ellipse(0, -26 * s, 7 * s, 15 * s, 0, 0, TAU); g.fill(); }
-        g.fillStyle = base; g.beginPath(); g.arc(0, 0, 12 * s, 0, TAU); g.fill();
-        g.fillStyle = line; g.beginPath(); g.arc(0, 0, 5 * s, 0, TAU); g.fill();
-        g.restore();
+      // pelo de la alfombra: ruido fino oscuro y alguna fibra clara
+      noise(g, w, h, 0, 5200, 'rgba(0,0,0,0.16)'); noise(g, w, h, 0, 1600, 'rgba(255,210,170,0.035)');
+      var S = 64; // 25 cm
+      // rejilla de rombos tono sobre tono (más oscura que el fondo)
+      g.strokeStyle = 'rgba(0,0,0,0.30)'; g.lineWidth = 3;
+      for (var i = -8; i <= 16; i++) { g.beginPath(); g.moveTo(i * S, 0); g.lineTo(i * S + h, h); g.stroke(); g.beginPath(); g.moveTo(i * S + h, 0); g.lineTo(i * S, h); g.stroke(); }
+      // hilo dorado finito, apenas visible
+      g.strokeStyle = line; g.globalAlpha = 0.22; g.lineWidth = 1.2;
+      for (var j = -8; j <= 16; j++) { g.beginPath(); g.moveTo(j * S, 0); g.lineTo(j * S + h, h); g.stroke(); g.beginPath(); g.moveTo(j * S + h, 0); g.lineTo(j * S, h); g.stroke(); }
+      g.globalAlpha = 1;
+      // en cada rombo: una florcita de cuatro pétalos (acento) con un punto dorado
+      for (var y = 0; y <= h; y += S) for (var x = 0; x <= w; x += S) {
+        var cx = x + S / 2, cy = y; // centro de rombo (las líneas cruzan en múltiplos de S en y=0)
+        for (var q = 0; q < 2; q++) {
+          var px = q ? x : cx, py = q ? y + S / 2 : cy;
+          g.save(); g.translate(px, py);
+          g.fillStyle = accent; g.globalAlpha = 0.5;
+          for (var k = 0; k < 4; k++) { g.rotate(PI / 2); g.beginPath(); g.ellipse(0, -7, 3.2, 6.5, 0, 0, TAU); g.fill(); }
+          g.globalAlpha = 0.3; g.fillStyle = line; g.beginPath(); g.arc(0, 0, 1.6, 0, TAU); g.fill();
+          g.globalAlpha = 1; g.restore();
+        }
       }
-      [[0, 0], [512, 0], [0, 512], [512, 512], [256, 256]].forEach(function (p) { medallion(p[0], p[1], 0.72); });
-      // small stars between
-      g.fillStyle = '#e7c27a';
-      [[256, 0], [0, 256], [512, 256], [256, 512], [128, 128], [384, 128], [128, 384], [384, 384]].forEach(function (p) {
-        g.save(); g.translate(p[0], p[1]); g.rotate(PI / 4);
-        g.beginPath(); for (var i = 0; i < 8; i++) { var r = i % 2 ? 4 : 13, a = i * PI / 4; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.closePath(); g.fill();
-        g.restore();
-      });
+      // guarda grande muy suave cada 1 m (da escala sin rombos gigantes)
+      g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 6;
+      for (var m = 0; m <= w; m += 256) { g.beginPath(); g.moveTo(m, 0); g.lineTo(m, h); g.stroke(); g.beginPath(); g.moveTo(0, m); g.lineTo(w, m); g.stroke(); }
+      g.strokeStyle = line; g.globalAlpha = 0.12; g.lineWidth = 1.2;
+      for (var n = 0; n <= w; n += 256) { g.beginPath(); g.moveTo(n + 4, 0); g.lineTo(n + 4, h); g.stroke(); g.beginPath(); g.moveTo(n - 4, 0); g.lineTo(n - 4, h); g.stroke(); g.beginPath(); g.moveTo(0, n + 4); g.lineTo(w, n + 4); g.stroke(); g.beginPath(); g.moveTo(0, n - 4); g.lineTo(w, n - 4); g.stroke(); }
+      g.globalAlpha = 1;
     }, { repeat: opts.repeat || [22, 10] });
     return t;
   }
@@ -299,38 +306,59 @@
    */
   function makeWallMaterials(opts) {
     opts = opts || {};
-    var wc = opts.wallColor || '#3b1f1a';
+    var wc = opts.wallColor || '#34101a';
     var wallTex = canvasTex(256, 512, function (g, w, h) {
-      // damask wallpaper, one tile = 2 m wide x 3.5 m high (repeat x = len/2)
-      var gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, shade(0x3b1f1a, -0.25)); gr.addColorStop(0.5, wc); gr.addColorStop(1, shade(0x3b1f1a, 0.05));
+      // empapelado damasco, una baldosa = 2 m de ancho x 3,5 m de alto (repeat x = largo/2). Bordó profundo con el
+      // dibujo apenas más claro, friso oscuro arriba (cornisa) y oscurecido suave en los bordes (luz falsa).
+      var gr = g.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, shade(0x34101a, -0.6)); gr.addColorStop(0.2, shade(0x34101a, -0.2)); gr.addColorStop(0.55, wc); gr.addColorStop(1, shade(0x34101a, -0.4));
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
-      g.fillStyle = 'rgba(217,168,74,0.13)';
-      for (var row = 0; row < 4; row++) for (var col = 0; col < 2; col++) {
-        var x = col * 128 + (row % 2 ? 64 : 0), y = 70 + row * 110;
-        g.save(); g.translate(x, y);
-        g.beginPath(); g.ellipse(0, 0, 22, 36, 0, 0, TAU); g.fill();
+      g.globalCompositeOperation = 'source-over';
+      // si el color pedido no es el bordó de siempre, se tiñe todo (decor.js vuelve a teñir encima)
+      if (opts.wallColor) { g.globalAlpha = 0.5; g.fillStyle = wc; g.fillRect(0, 0, w, h); g.globalAlpha = 1; }
+      // rayas finas tono sobre tono
+      g.fillStyle = 'rgba(0,0,0,0.16)'; for (var i = 0; i < w; i += 32) g.fillRect(i, 0, 2, h);
+      g.fillStyle = 'rgba(255,190,120,0.035)'; for (var i2 = 16; i2 < w; i2 += 32) g.fillRect(i2, 0, 1, h);
+      // damasco dorado muy tenue
+      g.fillStyle = 'rgba(214,160,80,0.055)';
+      for (var row = 0; row < 5; row++) for (var col = 0; col < 3; col++) {
+        var x = col * 128 + (row % 2 ? 64 : 0), y = 92 + row * 84;
+        g.save(); g.translate(x, y); g.scale(0.5, 0.5);
+        g.beginPath(); g.ellipse(0, 0, 20, 32, 0, 0, TAU); g.fill();
         g.beginPath(); g.moveTo(0, -52); g.quadraticCurveTo(26, -20, 0, 52); g.quadraticCurveTo(-26, -20, 0, -52); g.fill();
         for (var s = -1; s <= 1; s += 2) { g.beginPath(); g.ellipse(s * 30, 8, 8, 18, s * 0.6, 0, TAU); g.fill(); }
         g.restore();
       }
-      g.fillStyle = 'rgba(0,0,0,0.25)'; for (var i = 0; i < w; i += 64) g.fillRect(i, 0, 1, h);
+      // friso y cornisa (arriba): banda oscura con dos hilos dorados
+      g.fillStyle = 'rgba(10,4,4,0.82)'; g.fillRect(0, 0, w, 34);
+      g.fillStyle = '#9a7434'; g.fillRect(0, 34, w, 3); g.fillStyle = 'rgba(154,116,52,0.55)'; g.fillRect(0, 42, w, 1);
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(0, 37, w, 5);
     }, { repeat: [1, 1] });
     var wainTex = canvasTex(256, 128, function (g, w, h) {
-      g.fillStyle = '#24150e'; g.fillRect(0, 0, w, h);
+      // zócalo de madera oscura laqueada con paneles y pasamanos de bronce
+      g.fillStyle = '#160b07'; g.fillRect(0, 0, w, h);
       for (var i = 0; i < 2; i++) {
         var x = i * 128;
-        g.fillStyle = '#1a0e08'; g.fillRect(x + 12, 14, 104, 100);
-        g.strokeStyle = '#3a2416'; g.lineWidth = 3; g.strokeRect(x + 16, 18, 96, 92);
-        g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 2; g.strokeRect(x + 12, 14, 104, 100);
+        var pg = g.createLinearGradient(0, 18, 0, 108); pg.addColorStop(0, '#2a160d'); pg.addColorStop(1, '#1a0d08');
+        g.fillStyle = pg; g.fillRect(x + 14, 18, 100, 90);
+        g.strokeStyle = 'rgba(255,200,140,0.10)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x + 14, 108); g.lineTo(x + 14, 18); g.lineTo(x + 114, 18); g.stroke();
+        g.strokeStyle = 'rgba(0,0,0,0.7)'; g.beginPath(); g.moveTo(x + 114, 18); g.lineTo(x + 114, 108); g.lineTo(x + 14, 108); g.stroke();
+        g.strokeStyle = 'rgba(150,110,50,0.45)'; g.lineWidth = 1; g.strokeRect(x + 22, 26, 84, 74);
       }
-      g.fillStyle = '#b88a3c'; g.fillRect(0, 0, w, 5);
-      noise(g, w, h, 0, 500, 'rgba(255,220,180,0.04)');
+      g.fillStyle = '#a07a38'; g.fillRect(0, 0, w, 5); g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, 5, w, 3);
+      g.fillStyle = '#0a0503'; g.fillRect(0, h - 12, w, 12); g.fillStyle = 'rgba(150,110,50,0.4)'; g.fillRect(0, h - 13, w, 1);
+      noise(g, w, h, 0, 500, 'rgba(255,220,180,0.03)');
     }, { repeat: [1, 1] });
     var ceilTex = canvasTex(256, 256, function (g, w, h) {
-      g.fillStyle = '#16100c'; g.fillRect(0, 0, w, h);
-      g.fillStyle = '#0e0a08'; g.fillRect(16, 16, w - 32, h - 32);
-      g.strokeStyle = '#4a3418'; g.lineWidth = 4; g.strokeRect(22, 22, w - 44, h - 44);
-      g.strokeStyle = 'rgba(217,168,74,0.35)'; g.lineWidth = 2; g.strokeRect(34, 34, w - 68, h - 68);
+      // un casetón del artesonado (las vigas y los spots son geometría: makeCofferedCeiling). Fondo oscuro con el
+      // reflejo cálido del spot en el centro y un filete dorado.
+      g.fillStyle = '#26140f'; g.fillRect(0, 0, w, h);
+      var rg = g.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w * 0.5);
+      rg.addColorStop(0, 'rgba(255,196,130,0.5)'); rg.addColorStop(0.3, 'rgba(210,140,80,0.16)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = rg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 10; g.strokeRect(5, 5, w - 10, h - 10);
+      g.strokeStyle = 'rgba(190,140,60,0.55)'; g.lineWidth = 2; g.strokeRect(30, 30, w - 60, h - 60);
+      g.strokeStyle = '#8a6a34'; g.lineWidth = 4; g.beginPath(); g.arc(w / 2, h / 2, 11, 0, TAU); g.stroke(); // aro del spot
     }, { repeat: [11, 5] });
     var marbleTex = canvasTex(256, 256, function (g, w, h) {
       g.fillStyle = '#ebe4d6'; g.fillRect(0, 0, w, h);
@@ -354,7 +382,7 @@
       wall: new T.MeshStandardMaterial({ map: wallTex, roughness: 0.85 }),
       wainscot: new T.MeshStandardMaterial({ map: wainTex, roughness: 0.55 }),
       trim: MAT.brass,
-      ceiling: new T.MeshStandardMaterial({ map: ceilTex, roughness: 1 }),
+      ceiling: new T.MeshStandardMaterial({ map: ceilTex, roughness: 1, emissive: 0xffffff, emissiveMap: ceilTex, emissiveIntensity: 0.45 }), // el resplandor pintado de los spots se ve aunque no le llegue luz
       marble: new T.MeshStandardMaterial({ map: marbleTex, roughness: 0.25 }),
       exterior: new T.MeshStandardMaterial({ map: extTex, roughness: 0.95 }),
       floorWood: new T.MeshStandardMaterial({ map: woodTex, roughness: 0.6 }),
@@ -548,9 +576,9 @@
     k.add('METAL', cylG(0.2, 0.22, 0.03, 14), PAL.brass, 0, 0.015, z);
     k.add('METAL', cylG(0.03, 0.03, h - 0.08, 8), PAL.brass, 0, h / 2, z);
     k.add('METAL', torG(0.15, 0.012, 4, 14), PAL.brass, 0, h * 0.4, z, PI / 2);
-    k.add('PAINT', cylG(0.2, 0.18, 0.09, 14), 0x8e1f26, 0, h - 0.03, z);
-    k.add('PAINT', torG(0.19, 0.03, 5, 16), 0x7a1820, 0, h + 0.01, z, PI / 2);
-    k.add('PAINT', cylG(0.17, 0.17, 0.02, 14), 0x9e2a30, 0, h + 0.035, z);
+    k.add('PAINT', cylG(0.2, 0.18, 0.09, 14), 0x4e1217, 0, h - 0.03, z);       // tapizado bordó cuero
+    k.add('PAINT', torG(0.19, 0.03, 5, 16), 0x3e0e12, 0, h + 0.01, z, PI / 2);
+    k.add('PAINT', cylG(0.17, 0.17, 0.02, 14), 0x5a161c, 0, h + 0.035, z);
   }
   function slotParts(model, color, stool) {
     return cache(_geos, 'slot2|' + model + '|' + color + '|' + (stool ? 1 : 0), function () {
@@ -1473,6 +1501,142 @@
   }
 
   // ==================================================================
+  // ENTORNO DEL SALÓN (paso 1: color y luz) — todo con pocas llamadas de dibujo y sin luces nuevas
+  // ==================================================================
+  /** InstancedMesh a partir de una lista de matrices (sin recorte por cámara: las instancias cubren todo el salón). */
+  function instanced(geo, mat, mats) {
+    var im = new T.InstancedMesh(geo, mat, Math.max(1, mats.length));
+    for (var i = 0; i < mats.length; i++) im.setMatrixAt(i, mats[i]);
+    im.count = mats.length; im.instanceMatrix.needsUpdate = true; im.frustumCulled = false;
+    return im;
+  }
+  /**
+   * makeCofferedCeiling(opts) -> Group (3 draw calls)
+   * Artesonado oscuro: vigas de madera laqueada con filetes dorados y un "spot" empotrado (MeshBasic, no es una luz)
+   * en el centro de cada casetón; su aro y su resplandor están pintados en el plano del techo (textura ceiling de makeWallMaterials,
+   * repeat = cantidad de casetones) va aparte.
+   * opts: { x0, x1, z0, z1, y:3.5, cx:2.2, cz:2.0, beam:0.2, drop:0.16 }
+   * api: setOn(bool) (apagón)
+   */
+  function makeCofferedCeiling(opts) {
+    var x0 = opts.x0, x1 = opts.x1, z0 = opts.z0, z1 = opts.z1, y = opts.y || 3.5, cx = opts.cx || 2.2, cz = opts.cz || 2.0;
+    var bw = opts.beam || 0.28, bd = opts.drop || 0.18;
+    var nx = Math.round((x1 - x0) / cx), nz = Math.round((z1 - z0) / cz);
+    var g = new T.Group(), beams = [], trims = [], spots = [];
+    var box1 = cache(_geos, 'box1', function () { return new T.BoxGeometry(1, 1, 1); });
+    function M(x, yy, z, sx, sy, sz) { return new T.Matrix4().compose(new T.Vector3(x, yy, z), new T.Quaternion(), new T.Vector3(sx, sy, sz)); }
+    var yb = y - bd / 2, yt = y - bd - 0.006;
+    for (var j = 0; j <= nz; j++) for (var i = 0; i < nx; i++) { // vigas a lo largo de X
+      var bx = x0 + (i + 0.5) * cx, bz = z0 + j * cz;
+      beams.push(M(bx, yb, bz, cx, bd, bw));
+      trims.push(M(bx, yt, bz, cx, 0.012, 0.05));
+    }
+    for (var i2 = 0; i2 <= nx; i2++) for (var j2 = 0; j2 < nz; j2++) { // vigas a lo largo de Z (entre las otras)
+      var zx = x0 + i2 * cx, zz = z0 + (j2 + 0.5) * cz;
+      beams.push(M(zx, yb, zz, bw, bd, cz - bw));
+      trims.push(M(zx, yt, zz, 0.05, 0.012, cz - bw));
+    }
+    for (var i3 = 0; i3 < nx; i3++) for (var j3 = 0; j3 < nz; j3++) spots.push(new T.Vector3(x0 + (i3 + 0.5) * cx, y - 0.004, z0 + (j3 + 0.5) * cz));
+    var beamMat = std(0x120a07, 0.8, 0, 0x020101, 'beam');
+    var trimMat = std(0x8a6a34, 0.4, 0.3, 0x120a03, 'ceiltrim2');
+    g.add(instanced(box1, beamMat, beams));
+    g.add(instanced(box1, trimMat, trims));
+    // spots: disco brillante (el aro de bronce y el resplandor van pintados en la textura del casetón: más barato)
+    var disc = cache(_geos, 'spotdisc', function () { var c = new T.CircleGeometry(0.075, 14); c.rotateX(PI / 2); return c; });
+    var spotMat = new T.MeshBasicMaterial({ color: 0xfff1d2, toneMapped: false, fog: false });
+    var discMesh = instanced(disc, spotMat, spots.map(function (p) { return M(p.x, p.y - 0.002, p.z, 1, 1, 1); }));
+    g.add(discMesh);
+    var on = true;
+    var api = {
+      count: spots.length,
+      setOn: function (v) {
+        v = !!v; if (v === on) return; on = v;
+        spotMat.color.setHex(on ? 0xfff1d2 : 0x2a2420);
+      },
+    };
+    return finish(g, api, 'CofferedCeiling');
+  }
+
+  /** Degradé radial blanco -> transparente (para charcos de luz). */
+  function poolTex() {
+    return cachedTex('pool', 128, 128, function (g, w, h) {
+      var gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.65, 'rgba(255,255,255,0.16)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    });
+  }
+  /**
+   * makeFloorGlows(list, opts) -> Mesh (1 draw call)
+   * "Charcos" de luz falsos en el piso (bajo las arañas, frente a las máquinas...): quads aditivos con degradé radial.
+   * list: [{ x, z, r | rx, rz (radios en m), color, k (intensidad 0..1) }]. opts: { y:0.008 } (entre la alfombra y las sombras)
+   */
+  function makeFloorGlows(list, opts) {
+    opts = opts || {};
+    var parts = list.map(function (p) {
+      var c = new T.Color(p.color == null ? 0xffc27a : p.color).multiplyScalar(p.k == null ? 0.5 : p.k);
+      return { geo: planeG(1, 1), color: c.getHex(), m: mtx(p.x, opts.y || 0.008, p.z, -PI / 2, 0, 0, (p.rx || p.r) * 2, (p.rz || p.r) * 2, 1) };
+    });
+    var mat = new T.MeshBasicMaterial({ map: poolTex(), vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    var m = new T.Mesh(mergeGeos(parts, true), mat); m.renderOrder = 1; m.name = 'FloorGlows';
+    return regFx(m);
+  }
+  /** Degradé lineal negro -> transparente (fila 0 = pegado a la pared). */
+  function edgeTex() {
+    return cachedTex('edgeshade', 4, 64, function (g, w, h) {
+      var gr = g.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.25, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.15)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    }, { linear: true });
+  }
+  /**
+   * makeEdgeShade(segs, opts) -> Mesh (1 draw call)
+   * Oscurecido suave en el piso al pie de las paredes (en los rincones se suma y queda más oscuro): oclusión falsa.
+   * segs: [{ x0, z0, x1, z1, nx, nz, w (ancho, m) }] — (nx,nz) = hacia adentro del salón. opts: { opacity, y }
+   */
+  function makeEdgeShade(segs, opts) {
+    opts = opts || {};
+    var parts = segs.map(function (s) {
+      var len = Math.hypot(s.x1 - s.x0, s.z1 - s.z0), w = s.w || 1.4, cx = (s.x0 + s.x1) / 2 + s.nx * w / 2, cz = (s.z0 + s.z1) / 2 + s.nz * w / 2;
+      // plano acostado: U a lo largo de la pared, V hacia la pared (v = 1 contra la pared)
+      var ry = Math.atan2(s.nx, s.nz);
+      var m = new T.Matrix4().makeTranslation(cx, opts.y || 0.006, cz).multiply(new T.Matrix4().makeRotationY(ry)).multiply(new T.Matrix4().makeRotationX(-PI / 2)).multiply(new T.Matrix4().makeScale(len, w, 1));
+      return { geo: planeG(1, 1), m: m };
+    });
+    var mat = new T.MeshBasicMaterial({ map: edgeTex(), color: 0x000000, transparent: true, opacity: opts.opacity == null ? 0.55 : opts.opacity, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    var m = new T.Mesh(mergeGeos(parts), mat); m.renderOrder = -2; m.name = 'EdgeShade';
+    return m;
+  }
+  /**
+   * makePilasters(poses, opts) -> Group (2 draw calls)
+   * Pilastras simples contra la pared: zócalo, fuste de madera laqueada con filetes dorados, capitel y cornisa.
+   * poses: [{ x, z, ry }] (ry: hacia dónde mira el frente, +Z local). opts: { h:3.5 }
+   */
+  function makePilasters(poses, opts) {
+    opts = opts || {};
+    var h = opts.h || 3.5;
+    var parts = cache(_geos, 'pilaster|' + h, function () {
+      var W = [], G = [];
+      function add(list, w, hh, d, x, y, z) { list.push({ geo: boxG(w, hh, d), m: mtx(x, y, z) }); }
+      add(W, 0.44, 0.92, 0.1, 0, 0.46, 0.05);                       // zócalo (tapa el del muro)
+      add(W, 0.34, h - 1.3, 0.06, 0, 0.92 + (h - 1.3) / 2, 0.03);   // fuste
+      add(W, 0.4, 0.2, 0.09, 0, h - 0.28, 0.045);                   // capitel
+      add(W, 0.48, 0.12, 0.12, 0, h - 0.08, 0.06);                  // cornisa
+      add(G, 0.46, 0.03, 0.11, 0, 0.935, 0.055);                    // pasamanos
+      add(G, 0.42, 0.025, 0.1, 0, h - 0.395, 0.05);                 // collarín
+      add(G, 0.5, 0.025, 0.13, 0, h - 0.15, 0.065);
+      add(G, 0.02, h - 1.6, 0.012, -0.11, 0.92 + (h - 1.3) / 2, 0.062); // filetes del fuste
+      add(G, 0.02, h - 1.6, 0.012, 0.11, 0.92 + (h - 1.3) / 2, 0.062);
+      return { W: mergeGeos(W), G: mergeGeos(G) };
+    });
+    var up = new T.Vector3(0, 1, 0), one = new T.Vector3(1, 1, 1);
+    var mats = poses.map(function (p) { return new T.Matrix4().compose(new T.Vector3(p.x, 0, p.z), new T.Quaternion().setFromAxisAngle(up, p.ry || 0), one); });
+    var g = new T.Group();
+    g.add(instanced(parts.W, std(0x1a0e0a, 0.4, 0, 0x020101, 'pilaster'), mats));
+    g.add(instanced(parts.G, std(0xb88d42, 0.35, 0.3, 0x3a2408, 'ceiltrim'), mats));
+    return finish(g, null, 'Pilasters');
+  }
+
+  // ==================================================================
   // VELVET ROPE
   // ==================================================================
   /**
@@ -1889,6 +2053,10 @@
     makeNeonSign: makeNeonSign,
     makeCoveLights: makeCoveLights,
     makeLightCones: makeLightCones,
+    makeCofferedCeiling: makeCofferedCeiling, // paso 1: techo artesonado con spots falsos
+    makeFloorGlows: makeFloorGlows,           // charcos de luz falsos en el piso
+    makeEdgeShade: makeEdgeShade,             // oscurecido al pie de las paredes
+    makePilasters: makePilasters,             // pilastras contra la pared
     // helpers for the game
     materials: MAT,               // shared brass/chrome/wood/... (getters return cached materials)
     std: std, basic: basic,       // cached material makers

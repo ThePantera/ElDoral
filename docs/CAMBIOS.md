@@ -1,5 +1,15 @@
 # Casino Dorado · v2 — Cambios
 
+## Lavado de cara, paso 1: color y luz
+
+- **Colores de verdad:** la imagen ahora sale con el manejo de color correcto (sRGB). Antes los colores se veían lavados y la luz pareja, como de juguete; ahora las sombras son más profundas y los brillos (máquinas, carteles, neones) resaltan más que el resto.
+- **Paleta de casino elegante:** bordó profundo, madera oscura laqueada, negro y bronce. Las máquinas mantienen su color (Clásica roja, Dorada oro, Diamante turquesa, Jackpot violeta) pero más profundo; banquetas y tapizados en bordó cuero.
+- **Alfombra:** mucho más oscura y apagada, con un dibujo chico y fino tono sobre tono. Ya no se roba la pantalla.
+- **Paredes:** todas iguales: empapelado damasco bordó con friso arriba, zócalo de madera con pasamanos de bronce y pilastras cada tantos metros. Las paredes de las ampliaciones sin comprar ya no son gris chapa: tienen el mismo empapelado y el "SE VENDE" es un cartel enmarcado.
+- **Techo artesonado:** casetones oscuros con vigas, filetes dorados y un spot empotrado en cada uno (son brillos pintados, no luces: no pesan). En un apagón los spots se apagan.
+- **Luz falsa:** charcos de luz cálida en el piso bajo las arañas y frente a los neones, penumbra al pie de las paredes y en los rincones, y adentro una niebla cálida y oscura que pierde el fondo del salón en penumbra.
+- Cero luces nuevas (siguen siendo 8), sin sombras reales ni posproceso. Se ve bien en Gráficos "Alta" y en las demás calidades. No cambia nada de la economía ni del guardado: las partidas viejas cargan igual.
+
 ## Personajes nuevos (people.js)
 
 - **Las personas cambiaron de cara:** clientes, personal, ladrones, inspector, policía, la Mafia y el doble del dueño en el espejo ahora usan el personaje de **Kenney** (pack *Animated Characters*, licencia **CC0**, dominio público): cabezona redonda, cuerpo simpático, ojos y cejas que expresan. Créditos y detalles en [`CREDITOS_PERSONAJES.md`](CREDITOS_PERSONAJES.md).
