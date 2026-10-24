@@ -158,27 +158,29 @@ function makeNewDecor(id) {
       r.rotation.x = -HALF; r.position.y = 0.013; g.add(r); break;
     }
     case "deco_farol": {
-      const base = new T.Mesh(new T.CylinderGeometry(0.16, 0.2, 0.08, 12), brass); base.position.y = 0.04; g.add(base);
-      const pole = new T.Mesh(new T.CylinderGeometry(0.03, 0.035, 1.9, 8), A.materials.brassDark); pole.position.y = 1.0; g.add(pole);
-      const glass = new T.Mesh(new T.CylinderGeometry(0.13, 0.1, 0.32, 6), A.basic(0xffd27a)); glass.position.y = 2.1; g.add(glass);
-      const cap = new T.Mesh(new T.ConeGeometry(0.19, 0.16, 6), brass); cap.position.y = 2.34; g.add(cap);
-      const ring = new T.Mesh(new T.CylinderGeometry(0.15, 0.15, 0.04, 6), brass); ring.position.y = 1.94; g.add(ring);
+      // paso 2: pie y remate torneados, farol de 8 lados (sigue siendo un farol, pero sin aristas de bloque)
+      const L = A.latheGeometry;
+      const base = new T.Mesh(L("farolpie", [[0, 0], [0.2, 0], [0.205, 0.015], [0.19, 0.04], [0.14, 0.07], [0.08, 0.1], [0.05, 0.16], [0.04, 0.2], [0, 0.2]], 20), brass); g.add(base);
+      const pole = new T.Mesh(new T.CylinderGeometry(0.03, 0.035, 1.75, 12, 1, true), A.materials.brassDark); pole.position.y = 1.07; g.add(pole);
+      const glass = new T.Mesh(new T.CylinderGeometry(0.13, 0.1, 0.32, 8), A.basic(0xffd27a)); glass.position.y = 2.1; g.add(glass);
+      const cap = new T.Mesh(L("farolcap", [[0.2, 0], [0.205, 0.015], [0.17, 0.05], [0.08, 0.12], [0.03, 0.17], [0.035, 0.2], [0, 0.22]], 16), brass); cap.position.y = 2.26; g.add(cap);
+      const ring = new T.Mesh(A.roundedCylinder(0.15, 0.15, 0.04, 16, 0.012), brass); ring.position.y = 1.94; g.add(ring);
       A.addBlob(g, 0.6, 0.6); break;
     }
     case "deco_columna": {
       const marble = A.materials.marble;
-      const plinth = new T.Mesh(new T.BoxGeometry(0.62, 0.22, 0.62), marble); plinth.position.y = 0.11; g.add(plinth);
-      const ring = new T.Mesh(new T.CylinderGeometry(0.27, 0.29, 0.08, 16), brass); ring.position.y = 0.26; g.add(ring);
-      const shaft = new T.Mesh(new T.CylinderGeometry(0.22, 0.25, WALL_H - 0.62, 16), marble); shaft.position.y = 0.3 + (WALL_H - 0.62) / 2; g.add(shaft);
-      const top = new T.Mesh(new T.CylinderGeometry(0.3, 0.24, 0.12, 16), brass); top.position.y = WALL_H - 0.26; g.add(top);
-      const cap = new T.Mesh(new T.BoxGeometry(0.66, 0.2, 0.66), marble); cap.position.y = WALL_H - 0.1; g.add(cap);
+      const plinth = new T.Mesh(A.roundedBox(0.62, 0.22, 0.62, 0.03), marble); plinth.position.y = 0.11; g.add(plinth);
+      const ring = new T.Mesh(A.latheGeometry("colbase", [[0.29, 0], [0.295, 0.02], [0.27, 0.045], [0.275, 0.065], [0.25, 0.08], [0, 0.08]], 28), brass); ring.position.y = 0.22; g.add(ring);
+      const shaft = new T.Mesh(new T.CylinderGeometry(0.22, 0.25, WALL_H - 0.62, 28, 1, true), marble); shaft.position.y = 0.3 + (WALL_H - 0.62) / 2; g.add(shaft);
+      const top = new T.Mesh(A.latheGeometry("colcap", [[0.22, 0], [0.24, 0.02], [0.3, 0.07], [0.31, 0.1], [0.3, 0.12], [0, 0.12]], 28), brass); top.position.y = WALL_H - 0.32; g.add(top);
+      const cap = new T.Mesh(A.roundedBox(0.66, 0.2, 0.66, 0.03), marble); cap.position.y = WALL_H - 0.1; g.add(cap);
       A.addBlob(g, 0.9, 0.9); break;
     }
     case "deco_cuadro": framed(g, A, 1.2, 0.9, 1.95, paintingTex()); break;
     case "deco_retrato": framed(g, A, 0.9, 1.2, 2.0, portraitTex()); break;
     case "deco_neon_777": case "deco_neon_dorado": {
       const big = id === "deco_neon_dorado", w = big ? 2.2 : 1.5, h = 0.6, y = big ? 2.5 : 2.45;
-      const board = new T.Mesh(new T.BoxGeometry(w, h, 0.04), A.std(0x0b0c0e, 0.4, 0.1)); board.position.set(0, y, 0.02); g.add(board);
+      const board = new T.Mesh(A.roundedBox(w, h, 0.04, 0.015), A.std(0x0b0c0e, 0.4, 0.1)); board.position.set(0, y, 0.02); g.add(board);
       const tex = big ? neonTex("DORADO", "#ffc94a", 512, 140) : neonTex("777", "#ff3a6a", 384, 154);
       const sign = new T.Mesh(new T.PlaneGeometry(w * 0.96, h * 0.96), mat("neon|" + id, () => new T.MeshBasicMaterial({ map: tex, transparent: true })));
       sign.position.set(0, y, 0.045); g.add(sign);

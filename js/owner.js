@@ -228,6 +228,8 @@ const _q = new T.Quaternion(), _e = new T.Euler(), _v = new T.Vector3(), _s = ne
 function M4(x, y, z, ry, sx, sy, sz, rx, rz) { _e.set(rx || 0, ry || 0, rz || 0); _q.setFromEuler(_e); return new T.Matrix4().compose(_v.set(x, y, z), _q, _s.set(sx, sy, sz)); }
 function part(L, geo, color, x, y, z, w, h, d, ry, rx, rz) { L.push({ geo, m: M4(x, y, z, ry || 0, w, h, d, rx, rz), color }); }
 function merged(L, mat) { return new T.Mesh(A.mergeGeometries(L, true), mat || VC); }
+// paso 2: muebles de la oficina y caja fuerte con cantos redondeados (los autos y el cartel de afuera quedan como están)
+function mergedSoft(L, mat) { return merged(A.soften ? A.soften(L) : L, mat); }
 function plane(w, h, mat) { return new T.Mesh(new T.PlaneGeometry(w, h), mat); }
 const basicTex = tex => new T.MeshBasicMaterial({ map: tex });
 function sprite(draw, sx, sy) { const s = new T.Sprite(new T.SpriteMaterial({ map: A.canvasTex(64, 64, draw), depthTest: false })); s.scale.set(sx || 0.34, sy || 0.34, 1); s.renderOrder = 10; return s; }
@@ -244,7 +246,7 @@ const wardGroup = (() => {
   part(L, BOX1, gold, 0, 1.06, 0.252, 0.8, 1.72, 0.01); // marco dorado del espejo
   part(L, BOX1, gold, -0.43, 1.06, 0.26, 0.03, 0.18, 0.03); part(L, BOX1, gold, 0.43, 1.06, 0.26, 0.03, 0.18, 0.03); // manijas
   part(L, BOX1, gold, 0, 2.06, 0.256, 0.5, 0.04, 0.01);
-  g.add(merged(L));
+  g.add(mergedSoft(L));
   const geo = new T.PlaneGeometry(0.7, 1.6), uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i)); // espejado
   const mirror = new T.Mesh(geo, new T.MeshBasicMaterial({ map: mirrorRT.texture, color: 0xe8eef2 }));
   mirror.position.set(0, 1.06, 0.259); g.add(mirror);
@@ -340,7 +342,7 @@ office.escritorio = (() => {
   part(L, BOX1, mah, 0, 0.4, 0.29, 1.24, 0.72, 0.03); part(L, BOX1, gold, 0, 0.66, 0.307, 1.1, 0.02, 0.008); part(L, BOX1, gold, 0, 0.14, 0.307, 1.1, 0.02, 0.008);
   part(L, BOX1, 0x1d5a3a, -0.25, 0.795, 0.12, 0.3, 0.006, 0.18); // carpeta de cuero verde
   part(L, BOX1, gold, 0.2, 0.81, 0.27, 0.22, 0.05, 0.02, 0, -0.3); // placa
-  g.add(merged(L, VCG));
+  g.add(mergedSoft(L, VCG));
   const plate = plane(0.2, 0.04, basicTex(A.canvasTex(128, 26, (c, W, H) => { c.fillStyle = "#d9a84a"; c.fillRect(0, 0, W, H); c.fillStyle = "#3a1a08"; c.font = "bold 17px Georgia, serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("EL DUEÑO", W / 2, H / 2 + 1); })));
   plate.position.set(0.2, 0.816, 0.283); plate.rotation.x = -0.3; g.add(plate);
   return g;
@@ -357,7 +359,7 @@ office.alfombra = (() => {
 office.cuadro = (() => {
   const g = new T.Group(); g.position.set(DESK.x, 2.2, -9.83); G.scene.add(g);
   const L = []; part(L, BOX1, 0xc9962e, 0, 0, 0, 0.78, 0.94, 0.05); part(L, BOX1, 0x5a3a12, 0, 0, 0.02, 0.66, 0.82, 0.02);
-  g.add(merged(L, VCG));
+  g.add(mergedSoft(L, VCG));
   const pic = plane(0.62, 0.78, new T.MeshStandardMaterial({ map: portraitTex, roughness: 0.7 })); pic.position.z = 0.035; g.add(pic);
   return g;
 })();
@@ -369,7 +371,7 @@ office.acuario = (() => {
   part(L, BOX1, 0x1a1c20, 0, 1.33, 0, AQUA.w + 0.02, 0.04, AQUA.d + 0.02); // tapa
   for (const [x, h] of [[-0.18, 0.22], [-0.12, 0.3], [0.16, 0.18]]) part(L, CYL1, 0x2e8a3a, x, 0.89 + h / 2, -0.06, 0.03, h, 0.03);
   part(L, SPH1, 0x8a8a90, 0.06, 0.92, 0.02, 0.12, 0.08, 0.1);
-  g.add(merged(L));
+  g.add(mergedSoft(L));
   const water = new T.Mesh(BOX1, new T.MeshStandardMaterial({ color: 0x3aa8d8, transparent: true, opacity: 0.32, roughness: 0.1, metalness: 0.1, depthWrite: false }));
   water.scale.set(AQUA.w - 0.02, 0.44, AQUA.d - 0.02); water.position.y = 1.09; water.renderOrder = 3; g.add(water);
   const glow = plane(AQUA.w - 0.06, 0.02, A.basic(0xbfefff)); glow.rotation.x = Math.PI / 2; glow.position.y = 1.305; g.add(glow);
@@ -396,7 +398,7 @@ function refreshVault() {
   for (let i = 0; i < 4; i++) { const a = i * Math.PI / 4; part(L, BOX1, trim, Math.cos(a) * 0.0, h * 0.55, d / 2 + 0.05, 0.22 + o.safe * 0.04, 0.02, 0.02, 0, 0, a); }
   if (o.safe >= 2) for (const y of [0.18, h - 0.18]) part(L, BOX1, trim, 0, y, d / 2 + 0.02, w + 0.02, 0.05, 0.02);
   if (o.safe >= 3) for (const x of [-w / 2 + 0.06, w / 2 - 0.06]) for (const y of [0.2, h / 2, h - 0.2]) part(L, SPH1, trim, x, y, d / 2 + 0.03, 0.05, 0.05, 0.03);
-  vaultGroup.add(merged(L, VCG));
+  vaultGroup.add(mergedSoft(L, VCG));
 }
 // persiana metálica de la ventanilla y cámaras
 const shutter = (() => {
@@ -414,7 +416,7 @@ function refreshCams() {
   for (let i = 0; i < n; i++) {
     const [x, y, z, ry] = CAM_SPOTS[i], g = new T.Group(); g.position.set(x, y, z); g.rotation.y = ry;
     const L = []; part(L, BOX1, 0xe8e8e4, 0, 0, 0, 0.05, 0.16, 0.05); part(L, BOX1, 0xe8e8e4, 0, -0.1, 0.06, 0.12, 0.1, 0.24, 0, -0.5); part(L, CYL1, 0x15171a, 0, -0.16, 0.17, 0.07, 0.03, 0.07, 0, Math.PI / 2 - 0.5);
-    g.add(merged(L)); const led = new T.Mesh(SPH1, ledMat); led.scale.setScalar(0.02); led.position.set(0.04, -0.06, 0.12); g.add(led); camLeds.push(led);
+    g.add(mergedSoft(L)); const led = new T.Mesh(SPH1, ledMat); led.scale.setScalar(0.02); led.position.set(0.04, -0.06, 0.12); g.add(led); camLeds.push(led);
     camGroup.add(g);
   }
 }
@@ -428,7 +430,7 @@ const panelGroup = (() => {
   part(L, CYL1, 0xd4423f, -0.3, -0.02, 0.07, 0.15, 0.05, 0.15, 0, Math.PI / 2); part(L, CYL1, 0xf0c24a, -0.3, -0.02, 0.05, 0.19, 0.02, 0.19, 0, Math.PI / 2); // botón rojo
   part(L, BOX1, 0x9aa2ab, 0, -0.02, 0.06, 0.06, 0.24, 0.03); part(L, BOX1, 0x15171a, 0, 0.08, 0.1, 0.05, 0.05, 0.1); // palanca
   part(L, BOX1, 0xb8202a, 0.3, -0.06, 0.07, 0.2, 0.08, 0.1); part(L, BOX1, 0xb8202a, 0.3, 0.02, 0.09, 0.24, 0.05, 0.06); // teléfono rojo
-  g.add(merged(L));
+  g.add(mergedSoft(L));
   const lab = plane(0.92, 0.1, basicTex(A.canvasTex(320, 36, (c, W, H) => { c.fillStyle = "#15171a"; c.fillRect(0, 0, W, H); c.fillStyle = "#f6c766"; c.font = "bold 17px Arial, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("ALARMA      PERSIANA      POLICÍA", W / 2, H / 2 + 1); })));
   lab.position.set(0, 0.19, 0.045); g.add(lab);
   const beacon = new T.Mesh(SPH1, beaconMat); beacon.scale.set(0.12, 0.08, 0.12); beacon.position.set(0, 0.36, 0.06); g.add(beacon);
@@ -530,7 +532,7 @@ const flyerGroup = (() => {
 const radio = (() => {
   const g = new T.Group(); g.position.set(DESK.x + 0.4, 0.79, DESK.z - 0.16); G.scene.add(g);
   const L = []; part(L, BOX1, 0x8a2a1a, 0, 0.07, 0, 0.26, 0.14, 0.1); part(L, CYL1, 0xd9c8a0, -0.06, 0.07, 0.052, 0.09, 0.01, 0.09, 0, Math.PI / 2); part(L, BOX1, 0xd9a84a, 0.07, 0.09, 0.052, 0.08, 0.03, 0.01); part(L, CYL1, 0xb9bec6, 0.1, 0.25, -0.02, 0.008, 0.25, 0.008);
-  g.add(merged(L)); g.visible = false; return g;
+  g.add(mergedSoft(L)); g.visible = false; return g;
 })();
 function refreshAdsVisual() {
   const ids = new Set(OW().ads.map(a => a.id));

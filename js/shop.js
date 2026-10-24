@@ -195,6 +195,8 @@ const _q = new T.Quaternion(), _e = new T.Euler(), _v = new T.Vector3(), _s = ne
 function M4(x, y, z, ry, sx, sy, sz, rx) { _e.set(rx || 0, ry || 0, 0); _q.setFromEuler(_e); return new T.Matrix4().compose(_v.set(x, y, z), _q, _s.set(sx, sy, sz)); }
 function part(list, geo, color, x, y, z, w, h, d, ry, rx) { list.push({ geo, m: M4(x, y, z, ry || 0, w, h, d, rx), color }); }
 function merged(list) { return new T.Mesh(A.mergeGeometries(list, true), VC); }
+// paso 2: muebles de adentro con cantos redondeados (las cajas unitarias pasan a cajas blandas con sus medidas reales)
+function mergedSoft(list) { return merged(A.soften ? A.soften(list) : list); }
 function label(g, text, w, h, x, y, z, draw) {
   const tex = A.canvasTex(draw ? draw.w : 256, draw ? draw.h : 64, draw ? draw.f : (c, W, H) => { c.fillStyle = "#15171a"; c.fillRect(0, 0, W, H); c.strokeStyle = "#d9a84a"; c.lineWidth = 4; c.strokeRect(3, 3, W - 6, H - 6); c.fillStyle = "#f6c766"; c.font = "bold 34px Georgia, serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(text, W / 2, H / 2 + 2); });
   const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ map: tex })); m.position.set(x, y, z); g.add(m); return m;
@@ -243,7 +245,7 @@ const pcGroup = (() => {
     q = at(0, 0); part(L, CYL1, 0x2a2a2a, q[0], 0.24, q[1], 0.05, 0.46, 0.05); part(L, BOX1, 0x2a2a2a, q[0], 0.03, q[1], 0.5, 0.04, 0.06, cr); part(L, BOX1, 0x2a2a2a, q[0], 0.03, q[1], 0.06, 0.04, 0.5, cr); }
   // lámpara de escritorio
   part(L, CYL1, 0xb8873a, -0.42, 0.8, -0.18, 0.12, 0.03, 0.12); part(L, CYL1, 0xb8873a, -0.42, 0.98, -0.18, 0.02, 0.34, 0.02); part(L, CYL1, 0x1d5a3a, -0.42, 1.15, -0.1, 0.14, 0.1, 0.14);
-  g.add(merged(L));
+  g.add(mergedSoft(L));
   label(g, "", 0.58, 0.36, 0, 1.18, -0.104, { w: 256, h: 160, f: (c, W, H) => {
     const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#0f3a5a"); gr.addColorStop(1, "#07182a"); c.fillStyle = gr; c.fillRect(0, 0, W, H);
     c.fillStyle = "#d9a84a"; c.fillRect(0, 0, W, 26); c.fillStyle = "#07140f"; c.font = "bold 17px Arial, sans-serif"; c.textAlign = "left"; c.textBaseline = "middle"; c.fillText("LA ESTRELLA · mayorista", 10, 14);
@@ -267,9 +269,9 @@ const regGroup = (() => {
   part(L, BOX1, 0x2a2c30, 0.3, 1.28, -0.16, 0.08, 0.16, 0.06); part(L, BOX1, 0x101214, 0.3, 1.39, -0.16, 0.26, 0.12, 0.04);
   // bandeja de fichas
   part(L, BOX1, 0x1d5a3a, -0.36, 1.06, 0.02, 0.52, 0.03, 0.36); part(L, BOX1, 0xb8873a, -0.36, 1.072, 0.2, 0.52, 0.02, 0.02);
-  g.add(merged(L));
+  g.add(mergedSoft(L));
   label(g, "", 0.24, 0.1, 0.3, 1.39, -0.137, { w: 128, h: 48, f: (c, W, H) => { c.fillStyle = "#0b1a10"; c.fillRect(0, 0, W, H); c.fillStyle = "#6fd39b"; c.font = "bold 28px monospace"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("CAJA", W / 2, H / 2 + 2); } });
-  const chip = new T.CylinderGeometry(0.038, 0.038, 0.11, 12);
+  const chip = A.roundedCylinder(0.038, 0.038, 0.11, 16, 0.006);
   rows.fichas = inst(chip, A.std(0xd4423f, 0.45, 0.05), 10, g, (i, m) => m.makeTranslation(-0.56 + (i % 5) * 0.1, 1.13, -0.06 + ((i / 5) | 0) * 0.13));
   const tex = tagTex(256, 100); tags.push({ tex, shelf: "fichas", title: "FICHAS" });
   const tag = new T.Mesh(new T.PlaneGeometry(0.34, 0.13), new T.MeshBasicMaterial({ map: tex })); tag.position.set(-0.36, 1.18, 0.29); g.add(tag);
@@ -290,12 +292,15 @@ function makeFridge(ghost) {
   part(L, BOX1, chrome, -0.42, 0.95, 0.34, 0.03, 1.68, 0.03); part(L, BOX1, chrome, 0.42, 0.95, 0.34, 0.03, 1.68, 0.03);
   part(L, BOX1, chrome, 0, 1.79, 0.34, 0.86, 0.03, 0.03); part(L, BOX1, chrome, 0, 0.12, 0.34, 0.86, 0.03, 0.03);
   part(L, BOX1, 0x8a8f96, 0.36, 0.95, 0.37, 0.025, 0.5, 0.03);
-  g.add(merged(L));
+  g.add(mergedSoft(L));
   const glow = new T.Mesh(new T.PlaneGeometry(0.8, 0.03), A.basic(0xdff4ff)); glow.position.set(0, 1.76, 0.1); glow.rotation.x = Math.PI / 2; g.add(glow);
   const glass = new T.Mesh(new T.PlaneGeometry(0.84, 1.66), new T.MeshStandardMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.16, roughness: 0.1, metalness: 0.3, depthWrite: false }));
   glass.position.set(0, 0.95, 0.352); glass.renderOrder = 3; g.add(glass);
   label(g, "BEBIDAS", 0.8, 0.07, 0, 1.86, 0.352, { w: 256, h: 24, f: (c, W, H) => { c.fillStyle = "#c8202a"; c.fillRect(0, 0, W, H); c.fillStyle = "#fff"; c.font = "bold 20px Arial"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("BEBIDAS FRÍAS", W / 2, H / 2 + 1); } });
-  const can = new T.CylinderGeometry(0.032, 0.032, 0.12, 10), beer = new T.CylinderGeometry(0.026, 0.032, 0.22, 8), cava = new T.CylinderGeometry(0.03, 0.042, 0.3, 8);
+  // paso 2: latas con canto redondeado y botellas torneadas (cuello, hombro), centradas como los cilindros de antes
+  const can = A.roundedCylinder(0.032, 0.032, 0.12, 12, 0.007);
+  const beer = A.latheGeometry("shopbeer", [[0, -0.11], [0.03, -0.11], [0.032, -0.1], [0.032, 0.0], [0.026, 0.04], [0.013, 0.07], [0.012, 0.105], [0.015, 0.11], [0, 0.11]], 10);
+  const cava = A.latheGeometry("shopcava", [[0, -0.15], [0.04, -0.15], [0.042, -0.14], [0.042, 0.03], [0.032, 0.08], [0.017, 0.11], [0.016, 0.15], [0, 0.15]], 10);
   const grid = (cols, y, h) => (i, m) => m.makeTranslation(-0.35 + (i % cols) * (0.7 / (cols - 1)), y + h / 2, 0.1 - ((i / cols) | 0) * 0.17);
   if (!ghost) {
     R.gaseosa = inst(can, A.std(0xc8202a, 0.35, 0.3), PROD("gaseosa").cap, g, grid(8, 0.96, 0.12));
@@ -316,9 +321,9 @@ function makeSnacks(ghost) {
   part(L, BOX1, 0x4a2e1a, 0, 0.8, -0.235, 1.3, 1.6, 0.03);
   for (const y of [0.1, 0.55, 1.0, 1.45]) part(L, BOX1, wood, 0, y, 0, 1.26, 0.03, 0.48);
   for (const y of [0.1, 0.55, 1.0]) part(L, BOX1, 0xb8873a, 0, y + 0.03, 0.245, 1.26, 0.05, 0.01);
-  g.add(merged(L));
+  g.add(mergedSoft(L));
   label(g, "SNACKS", 1.0, 0.16, 0, 1.56, -0.2, { w: 256, h: 40, f: (c, W, H) => { c.fillStyle = "#f0c24a"; c.fillRect(0, 0, W, H); c.fillStyle = "#6e1423"; c.font = "bold 30px Georgia, serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("SNACKS", W / 2, H / 2 + 2); } });
-  const bag = new T.BoxGeometry(0.12, 0.2, 0.05), alf = new T.BoxGeometry(0.11, 0.035, 0.11), cig = new T.BoxGeometry(0.15, 0.04, 0.09);
+  const bag = A.roundedBox(0.12, 0.2, 0.05, 0.02), alf = A.roundedBox(0.11, 0.035, 0.11, 0.012), cig = A.roundedBox(0.15, 0.04, 0.09, 0.012); // paso 2: paquetes blanditos
   const gridS = (cols, y, dy) => (i, m) => m.makeTranslation(-0.52 + (i % cols) * (1.04 / (cols - 1)), y + dy, 0.12 - ((i / cols) | 0) * 0.17);
   if (!ghost) {
   R.papas = inst(bag, A.std(0xf0c24a, 0.6), PROD("papas").cap, g, gridS(8, 1.015, 0.1));
