@@ -204,6 +204,8 @@ const geo = (k, f) => GEO[k] || (GEO[k] = f());
 const boxG = (w, h, d) => geo(`b${w}|${h}|${d}`, () => new T.BoxGeometry(w, h, d));
 const cylG = (rt, rb, h, s) => geo(`c${rt}|${rb}|${h}|${s}`, () => new T.CylinderGeometry(rt, rb, h, s || 12));
 const planeG = (w, h) => geo(`p${w}|${h}`, () => new T.PlaneGeometry(w, h));
+// paso 2: caja con cantos redondeados (canto por defecto: 30 % del lado más fino, tope 3 cm)
+const rb = (w, h, d, r, seg) => A.roundedBox(w, h, d, r == null ? Math.min(0.03, Math.min(w, h, d) * 0.3) : r, seg);
 const MATS = {};
 const mat = (k, f) => MATS[k] || (MATS[k] = f());
 const texMat = (k, tex, basic) => mat(k, () => basic ? new T.MeshBasicMaterial({ map: tex }) : new T.MeshStandardMaterial({ map: tex, roughness: 0.9 }));
@@ -242,17 +244,18 @@ function makeDice() {
   const g = new T.Group();
   addParts(g, staticParts("crTable", add => {
     const wood = A.materials.woodDark, lea = A.materials.leatherRed, brass = A.materials.brass, black = A.materials.black;
-    add(boxG(3.1, 0.7, 1.3), wood, 0, 0.42, 0);
-    add(boxG(2.7, 0.08, 1.0), black, 0, 0.04, 0);
-    add(boxG(3.2, 0.14, 0.14), lea, 0, CR_H + 0.07, 0.66); add(boxG(3.2, 0.14, 0.14), lea, 0, CR_H + 0.07, -0.66);
-    add(boxG(0.14, 0.14, 1.46), lea, 1.6, CR_H + 0.07, 0); add(boxG(0.14, 0.14, 1.46), lea, -1.6, CR_H + 0.07, 0);
-    add(boxG(3.2, 0.02, 0.05), brass, 0, CR_H + 0.15, 0.66); add(boxG(3.2, 0.02, 0.05), brass, 0, CR_H + 0.15, -0.66);
-    add(boxG(3.0, 0.06, 0.04), brass, 0, CR_H - 0.12, 0.66);
+    add(rb(3.1, 0.7, 1.3, 0.05, 2), wood, 0, 0.42, 0);
+    add(rb(2.7, 0.08, 1.0), black, 0, 0.04, 0);
+    // baranda de cuero acolchada: cantos bien redondos (casi un caño)
+    add(rb(3.2, 0.14, 0.14, 0.062, 2), lea, 0, CR_H + 0.07, 0.66); add(rb(3.2, 0.14, 0.14, 0.062, 2), lea, 0, CR_H + 0.07, -0.66);
+    add(rb(0.14, 0.14, 1.46, 0.062, 2), lea, 1.6, CR_H + 0.07, 0); add(rb(0.14, 0.14, 1.46, 0.062, 2), lea, -1.6, CR_H + 0.07, 0);
+    add(rb(3.2, 0.02, 0.05), brass, 0, CR_H + 0.15, 0.66); add(rb(3.2, 0.02, 0.05), brass, 0, CR_H + 0.15, -0.66);
+    add(rb(3.0, 0.06, 0.04), brass, 0, CR_H - 0.12, 0.66);
     // pared del fondo con pirámides (donde tienen que pegar los dados)
-    add(boxG(0.03, 0.16, 1.18), mat("crPyr", () => new T.MeshStandardMaterial({ roughness: 0.6, map: A.canvasTex(64, 256, (g, w, h) => { g.fillStyle = "#15171a"; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 16) for (let x = 0; x < w; x += 16) { g.fillStyle = "#3a3d44"; g.beginPath(); g.moveTo(x, y + 16); g.lineTo(x + 8, y); g.lineTo(x + 16, y + 16); g.fill(); g.fillStyle = "#6a6e78"; g.beginPath(); g.moveTo(x + 8, y); g.lineTo(x + 16, y + 16); g.lineTo(x + 8, y + 12); g.fill(); } }) })), 1.515, CR_H + 0.06, 0);
+    add(rb(0.03, 0.16, 1.18), mat("crPyr", () => new T.MeshStandardMaterial({ roughness: 0.6, map: A.canvasTex(64, 256, (g, w, h) => { g.fillStyle = "#15171a"; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 16) for (let x = 0; x < w; x += 16) { g.fillStyle = "#3a3d44"; g.beginPath(); g.moveTo(x, y + 16); g.lineTo(x + 8, y); g.lineTo(x + 16, y + 16); g.fill(); g.fillStyle = "#6a6e78"; g.beginPath(); g.moveTo(x + 8, y); g.lineTo(x + 16, y + 16); g.lineTo(x + 8, y + 12); g.fill(); } }) })), 1.515, CR_H + 0.06, 0);
     // palo del stickman
-    add(cylG(0.008, 0.008, 1.4, 6), A.materials.wood, 0.1, CR_H + 0.02, -0.5, 0, 0, Math.PI / 2);
-    add(boxG(0.16, 0.012, 0.03), A.materials.wood, -0.6, CR_H + 0.02, -0.5);
+    add(cylG(0.008, 0.008, 1.4, 10), A.materials.wood, 0.1, CR_H + 0.02, -0.5, 0, 0, Math.PI / 2);
+    add(rb(0.16, 0.012, 0.03), A.materials.wood, -0.6, CR_H + 0.02, -0.5);
     // fichas de la banca
     for (let i = 0; i < 6; i++) add(cylG(0.03, 0.03, 0.05 + (i % 3) * 0.02, 12), A.std([0xd4423f, 0x2a6fd6, 0x1d8a4e, 0x15171a, 0xf3e9d2, 0x9b59d6][i], 0.45, 0.1), -0.45 + i * 0.075, CR_H + 0.03 + (i % 3) * 0.01, -0.56);
   }));
@@ -324,34 +327,34 @@ function makeBingo() {
   addParts(g, staticParts("bgHall", add => {
     const black = A.materials.black, wood = A.materials.wood, woodD = A.materials.woodDark, brass = A.materials.brass, lea = A.materials.leatherRed;
     // tablero: patas y marco
-    add(boxG(0.08, 2.9, 0.08), black, -1.38, 1.45, -1.52); add(boxG(0.08, 2.9, 0.08), black, 1.18, 1.45, -1.52);
-    add(boxG(2.74, 1.56, 0.07), black, -0.1, 2.12, -1.53); add(boxG(2.8, 0.05, 0.1), brass, -0.1, 2.92, -1.53); add(boxG(2.8, 0.05, 0.1), brass, -0.1, 1.32, -1.53);
-    add(boxG(0.7, 0.05, 0.5), black, -0.1, 0.02, -1.52);
+    add(rb(0.08, 2.9, 0.08), black, -1.38, 1.45, -1.52); add(rb(0.08, 2.9, 0.08), black, 1.18, 1.45, -1.52);
+    add(rb(2.74, 1.56, 0.07), black, -0.1, 2.12, -1.53); add(rb(2.8, 0.05, 0.1), brass, -0.1, 2.92, -1.53); add(rb(2.8, 0.05, 0.1), brass, -0.1, 1.32, -1.53);
+    add(rb(0.7, 0.05, 0.5), black, -0.1, 0.02, -1.52);
     // mesa larga con cartones
-    add(boxG(3.95, 0.05, 0.44), woodD, -0.025, 0.74, 0.12);
-    for (const x of [-1.9, 1.85]) for (const z of [-0.05, 0.29]) add(boxG(0.05, 0.72, 0.05), black, x, 0.36, z);
-    add(boxG(3.8, 0.3, 0.02), woodD, -0.025, 0.55, -0.09);
+    add(rb(3.95, 0.05, 0.44), woodD, -0.025, 0.74, 0.12);
+    for (const x of [-1.9, 1.85]) for (const z of [-0.05, 0.29]) add(rb(0.05, 0.72, 0.05), black, x, 0.36, z);
+    add(rb(3.8, 0.3, 0.02), woodD, -0.025, 0.55, -0.09);
     for (let i = 0; i < 8; i++) { add(boxG(0.2, 0.004, 0.2), mat("bgCardMat", () => new T.MeshStandardMaterial({ roughness: 0.8, map: A.canvasTex(64, 64, (c) => { c.fillStyle = "#f6f0e0"; c.fillRect(0, 0, 64, 64); c.strokeStyle = "#2a3a7a"; c.lineWidth = 1.5; for (let k = 0; k <= 5; k++) { c.beginPath(); c.moveTo(4 + k * 11.2, 4); c.lineTo(4 + k * 11.2, 60); c.stroke(); c.beginPath(); c.moveTo(4, 4 + k * 11.2); c.lineTo(60, 4 + k * 11.2); c.stroke(); } c.fillStyle = "#d4423f"; for (let k = 0; k < 7; k++) { c.beginPath(); c.arc(10 + ((k * 37) % 5) * 11.2, 10 + ((k * 23) % 5) * 11.2, 3.5, 0, 6.3); c.fill(); } }) })), -1.75 + i * 0.5, 0.767, 0.2); }
     // sillas (asiento, respaldo y patas)
     for (let i = 0; i < 8; i++) {
       const x = -1.75 + i * 0.5, z = 0.66;
-      add(boxG(0.4, 0.05, 0.4), lea, x, 0.46, z); add(boxG(0.4, 0.42, 0.04), lea, x, 0.7, z + 0.2);
-      for (const dx of [-0.17, 0.17]) for (const dz of [-0.17, 0.17]) add(boxG(0.03, 0.46, 0.03), black, x + dx, 0.23, z + dz);
+      add(rb(0.4, 0.06, 0.4, 0.028, 2), lea, x, 0.46, z); add(rb(0.4, 0.42, 0.05, 0.022, 2), lea, x, 0.7, z + 0.2); // tapizado acolchado
+      for (const dx of [-0.17, 0.17]) for (const dz of [-0.17, 0.17]) add(cylG(0.016, 0.013, 0.46, 8), black, x + dx, 0.23, z + dz);
     }
     // mesita del bolillero
-    add(boxG(0.62, 0.86, 0.5), wood, 1.6, 0.43, -0.75); add(boxG(0.66, 0.03, 0.54), brass, 1.6, 0.875, -0.75);
-    add(boxG(0.05, 0.3, 0.05), black, 1.42, 1.04, -0.75); add(boxG(0.05, 0.3, 0.05), black, 1.78, 1.04, -0.75);
-    add(boxG(0.2, 0.04, 0.12), brass, 1.6, 0.91, -0.52); // bandejita de la bolilla
+    add(rb(0.62, 0.86, 0.5), wood, 1.6, 0.43, -0.75); add(rb(0.66, 0.03, 0.54), brass, 1.6, 0.875, -0.75);
+    add(rb(0.05, 0.3, 0.05), black, 1.42, 1.04, -0.75); add(rb(0.05, 0.3, 0.05), black, 1.78, 1.04, -0.75);
+    add(rb(0.2, 0.04, 0.12), brass, 1.6, 0.91, -0.52); // bandejita de la bolilla
   }));
   // tablero luminoso (uno por sala)
   const tex = A.canvasTex(640, 260, (c, w, h) => bgBoardDraw(c, w, h, [], 0, "20:00 h"));
   const board = new T.Mesh(planeG(2.6, 1.06), new T.MeshBasicMaterial({ map: tex })); board.position.set(-0.1, 2.12, -1.49); g.add(board);
   // bolillero: jaula que gira con bolillas adentro
   const cage = new T.Group(); cage.position.set(1.6, 1.2, -0.75); g.add(cage);
-  const ringG = geo("bgRing", () => new T.TorusGeometry(0.19, 0.008, 6, 28));
+  const ringG = geo("bgRing", () => new T.TorusGeometry(0.19, 0.008, 8, 36));
   for (let k = 0; k < 4; k++) { const r = new T.Mesh(ringG, A.materials.brass); r.rotation.y = k * Math.PI / 4; cage.add(r); }
   const axle = new T.Mesh(cylG(0.012, 0.012, 0.44, 6), A.materials.chrome); axle.rotation.z = Math.PI / 2; cage.add(axle);
-  const ballG = geo("bgBall", () => new T.SphereGeometry(0.025, 8, 6));
+  const ballG = geo("bgBall", () => new T.SphereGeometry(0.025, 12, 8));
   const ballMats = [0xd4423f, 0xf0c24a, 0x2a6fd6, 0x1d8a4e, 0x9b59d6, 0xf3e9d2].map(c => A.std(c, 0.3, 0.05));
   for (let k = 0; k < 14; k++) { const b = new T.Mesh(ballG, ballMats[k % ballMats.length]); b.position.set(rnd(-0.12, 0.12), rnd(-0.14, -0.06), rnd(-0.1, 0.1)); cage.add(b); }
   const outBall = new T.Mesh(ballG, A.std(0xf3e9d2, 0.3, 0.05)); outBall.position.set(1.6, 0.955, -0.52); outBall.visible = false; g.add(outBall);
@@ -378,13 +381,13 @@ function makeRaces() {
   const g = new T.Group();
   addParts(g, staticParts("rcBooth", add => {
     const black = A.materials.black, chrome = A.materials.chrome, wood = A.materials.woodDark, marble = A.materials.marble, brass = A.materials.brass;
-    add(boxG(0.1, 3.1, 0.1), black, -1.5, 1.55, -0.52); add(boxG(0.1, 3.1, 0.1), black, 1.5, 1.55, -0.52);
-    add(boxG(3.12, 1.82, 0.08), black, 0, 2.2, -0.53); add(boxG(3.2, 0.04, 0.1), chrome, 0, 3.12, -0.53); add(boxG(3.2, 0.04, 0.1), chrome, 0, 1.28, -0.53);
-    add(boxG(0.7, 0.05, 0.4), black, -1.5, 0.025, -0.52); add(boxG(0.7, 0.05, 0.4), black, 1.5, 0.025, -0.52);
+    add(rb(0.1, 3.1, 0.1), black, -1.5, 1.55, -0.52); add(rb(0.1, 3.1, 0.1), black, 1.5, 1.55, -0.52);
+    add(rb(3.12, 1.82, 0.08), black, 0, 2.2, -0.53); add(rb(3.2, 0.04, 0.1), chrome, 0, 3.12, -0.53); add(rb(3.2, 0.04, 0.1), chrome, 0, 1.28, -0.53);
+    add(rb(0.7, 0.05, 0.4), black, -1.5, 0.025, -0.52); add(rb(0.7, 0.05, 0.4), black, 1.5, 0.025, -0.52);
     // ventanilla
-    add(boxG(2.2, 1.02, 0.42), wood, 0, 0.51, 0.06); add(boxG(2.32, 0.05, 0.52), marble, 0, 1.045, 0.06);
-    add(boxG(2.24, 0.06, 0.02), brass, 0, 0.92, 0.28); add(boxG(2.24, 0.04, 0.02), brass, 0, 0.12, 0.28);
-    add(boxG(0.04, 0.3, 0.04), black, 0, 1.22, -0.05);
+    add(rb(2.2, 1.02, 0.42), wood, 0, 0.51, 0.06); add(rb(2.32, 0.05, 0.52), marble, 0, 1.045, 0.06);
+    add(rb(2.24, 0.06, 0.02), brass, 0, 0.92, 0.28); add(rb(2.24, 0.04, 0.02), brass, 0, 0.12, 0.28);
+    add(rb(0.04, 0.3, 0.04), black, 0, 1.22, -0.05);
     // cartel "APUESTAS HÍPICAS"
     add(planeG(1.5, 0.3), mat("rcSign", () => new T.MeshBasicMaterial({ map: A.canvasTex(512, 102, (c, w, h) => { c.fillStyle = "#15171a"; c.fillRect(0, 0, w, h); c.strokeStyle = "#d9a84a"; c.lineWidth = 4; c.strokeRect(4, 4, w - 8, h - 8); c.fillStyle = "#f0c24a"; c.font = "bold 46px Georgia, serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText("APUESTAS HÍPICAS", w / 2, h / 2 + 2); }) })), 0, 0.62, 0.272);
   }));
@@ -395,7 +398,7 @@ function makeRaces() {
   return g;
 }
 function makeWallScreen(g) {
-  addParts(g, staticParts("rcWall", add => { add(boxG(2.44, 1.42, 0.06), A.materials.black, 0, 2.25, 0.03); add(boxG(2.5, 0.03, 0.08), A.materials.chrome, 0, 2.97, 0.04); add(boxG(2.5, 0.03, 0.08), A.materials.chrome, 0, 1.53, 0.04); }));
+  addParts(g, staticParts("rcWall", add => { add(rb(2.44, 1.42, 0.06), A.materials.black, 0, 2.25, 0.03); add(rb(2.5, 0.03, 0.08), A.materials.chrome, 0, 2.97, 0.04); add(rb(2.5, 0.03, 0.08), A.materials.chrome, 0, 1.53, 0.04); }));
   const s = new T.Mesh(planeG(2.3, 1.294), raceMat); s.position.set(0, 2.25, 0.064); g.add(s);
 }
 
