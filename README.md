@@ -31,7 +31,7 @@ Si va lento: **Esc → Gráficos → Media o Baja**. Desde la v2, todas las cali
 ```
 index.html      La página del juego (estilos y pantallas). Se abre esta.
 js/             El código del juego, un archivo por sistema.
-lib/            Three.js r128 (motor 3D, licencia MIT). No se toca.
+lib/            Three.js r128 y su GLTFLoader (motor 3D, licencia MIT). No se toca.
 docs/           Documentación, lista de cambios y contexto para la v2.
 ```
 
@@ -41,6 +41,8 @@ Los archivos de `js/`, en el orden en que carga `index.html`:
 |---|---|
 | `data.js` | **Todos los números del juego** (precios, rangos, máquinas, mesas, personal, clientes) |
 | `art.js` | Modelos y animaciones en 3D, todos hechos por código |
+| `people-assets.js` | El personaje de Kenney (CC0) embebido, para abrir con doble clic |
+| `people.js` | Cuerpos de las personas: malla de Kenney, ropa pintada por look y caras con gestos |
 | `decor.js` | Modo construcción y decoración |
 | `game.js` | El núcleo: bucle, economía, clientes, personal, pantallas, guardado, controles |
 | `audio.js` | Sonido y música sintetizados |
@@ -77,4 +79,4 @@ Para probar desde la consola del navegador: `casinoDebug.step(segundos)` adelant
 
 ---
 
-Creado por Manu con Claude. Three.js © Three.js Authors, licencia MIT (`lib/THREE-LICENSE.txt`).
+Creado por Manu con Claude. Three.js © Three.js Authors, licencia MIT (`lib/THREE-LICENSE.txt`). Personajes de Kenney (www.kenney.nl), licencia CC0 ([`docs/CREDITOS_PERSONAJES.md`](docs/CREDITOS_PERSONAJES.md)).
