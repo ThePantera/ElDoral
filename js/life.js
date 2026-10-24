@@ -554,6 +554,7 @@ EV.fight = {
       if (e.guard && (!e.guard.lifeTask || e.guard.lifeTask.owner !== e)) e.guard = null;
       if (!e.guard && S().staff.sec > 0) { e.guardT -= dt; if (e.guardT <= 0) { e.guardT = 2; const g = pickStaff("sec", a.x, a.z, n => n.state !== "chase"); if (g) e.guard = sendStaff(g, { owner: e, target: a, speed: 4.4, reach: 1.4, onArrive: () => e.resolve("guard") }); } }
       if (a.life && a.life.st === "fight") {
+        window.CasinoCombat?.disturb?.(D.COMBAT.riot.fightPerSec * dt, "clientes"); // escándalo: si dura, llega la policía (combat.js)
         e.punchT -= dt; if (e.punchT <= 0) { e.punchT = rnd(0.45, 0.8); G.sfx("punch", a.x, a.z); if (Math.random() < 0.3) say(Math.random() < 0.5 ? a : b, pick(LINES.fight), { tone: "bad" }); }
         e.crowdT -= dt;
         if (e.crowdT <= 0) {
@@ -1056,6 +1057,8 @@ window.CasinoLife = {
   atrPenalty: () => messes.length * L.mess.atr,
   demandMul: () => { let k = 1; for (const e of active) { if (e.id === "celebrity" && e.greeted === "ok") k *= L.celebrity.demandMul; if (e.id === "outage") k *= 0.6; } return k; },
   get crowdBoost() { return crowdBoost; },
+  // combat.js: la policía se lleva a un actor de un evento (cierra el evento sin premio ni castigo)
+  drop(c) { const e = c && c.life && c.life.e; if (e && !e.done) { e.note = e.id === "fight" ? "la policía se llevó a los que se peleaban" : null; finish(e, "cut"); } },
   trigger: id => !!begin(id), // world.js: un rayo puede cortar la luz (respeta las condiciones del evento)
   get outage() { return !!outage(); },
   debug: {

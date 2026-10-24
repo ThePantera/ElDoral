@@ -1636,6 +1636,7 @@
     host: { top: 'vest', shirt: 0xf3e9d2, pants: 0x15171a, vest: 0x6e1423, bow: 0xd9a84a, sleeves: 'long' },
     croupier: { top: 'vest', shirt: 0xf6f1e6, pants: 0x15171a, vest: 0x15171a, bow: 0xd4423f, armband: 0xd9a84a, sleeves: 'long' },
     cashier: { top: 'vest', shirt: 0xf3e9d2, pants: 0x1e2430, vest: 0x0f2b22, bow: 0xd9a84a, hat: 'visor', hatColor: 0x1d8a4e, sleeves: 'long' },
+    police: { top: 'guard', shirt: 0x2f4f8f, pants: 0x18213a, hat: 'guard', hatColor: 0x0f1830, badge: 0xd8dde4, belt: 0x0b0c0e, sleeves: 'long' }, // patrulla (combat.js)
     stock: { top: 'apron', shirt: 0x3a7a3a, pants: 0x2a2a30, apron: 0x1f4a24, hat: 'cap', hatColor: 0x2c5e2c, belt: 0x2a2a2a, sleeves: 'short' }, // repositor (shop.js)
   };
   var SKINS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];

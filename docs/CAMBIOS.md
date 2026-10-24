@@ -1,5 +1,15 @@
 # Casino Dorado · v2 — Cambios
 
+## Piñas y la policía (combat.js)
+
+- **Puño limpio:** siempre lo tenés, sin comprar nada. Con **F** cambiás entre puños, cuchillo, bate, pistola y nada en la mano. Las piñas son a lo dibujito (¡PUM!, ¡PAF!) y alternan mano izquierda y derecha. A una máquina no la rompés con la mano: te duele a vos.
+- **Todos se defienden:** los clientes ya lo hacían; ahora también el personal. Si le pegás a un empleado deja lo que estaba haciendo, te devuelve las piñas (el de seguridad pega más fuerte) y, cuando se calma o se levanta, vuelve a su puesto.
+- **Escándalo:** una barrita abajo al centro. La suben tus piñas y disparos, las peleas entre clientes que nadie separa y la Mafia. Baja sola con el tiempo.
+- **Policía:** si el escándalo llega al tope, alguien llama al 911. A los 8 segundos llegan dos patrulleros con balizas y cuatro policías que entran a despejar el salón: se llevan esposado a cualquiera que esté peleando (clientes, pistoleros de la Mafia, vos si pegaste hace poco) y también **a cualquiera que tengan adelante**, vos incluido. A los empleados que están peleando solo los calman. Los clientes se asustan y se van.
+- **Si te llevan a vos:** pantalla de rejas, multa de $900 (por `Economy`, categoría Multas), te sacan un 25 % del bolsillo y perdés 2 horas del día. Volvés a la entrada con la salud llena.
+- **Contra la Mafia:** la llegada de la Mafia ya hace que los vecinos llamen. Si la policía se lleva a todos los pistoleros a tiempo, el tiroteo se corta y el personal que todavía no cayó se salva.
+- Sin luces nuevas (las balizas son solo color). Números en `data.js` (`COMBAT.riot`, `COMBAT.police`, `COMBAT.staff`, `COMBAT.fists`). Partidas viejas cargan igual y ya tienen los puños.
+
 ## Salón ultra VIP secreto (vip.js) · contenido opcional +18
 
 - **Opcional:** viene apagado. Se activa en **Esc → Contenido +18** (pide confirmar que tenés 18 o más). Todo es ficción y nada explícito: el baile es vestido y el reservado es una puerta cerrada con fundido a negro. Todos los personajes son adultos.

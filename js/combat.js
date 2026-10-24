@@ -3,10 +3,14 @@
  * clic izquierdo. Pegarle a una máquina la rompe y el técnico tarda más en arreglarla; pegarle a un cliente lo hace defenderse (te puede
  * noquear: la cámara cae y seguridad viene a ayudarte); un disparo a un cliente deja una mancha de sangre estilizada que se paga limpiar;
  * y si le pegás a Don Aurelio, a las 21:00 la Mafia llega en autos y tirotea el salón: máquinas rotas y personal fuera (hay que recontratar).
+ * También peleás a PUÑO LIMPIO (siempre los tenés: F los pone en mano) y el personal se defiende igual que los clientes.
+ * ESCÁNDALO: tus piñas y disparos, las peleas entre clientes y el tiroteo de la Mafia lo suben; si llega al tope, alguien llama al 911
+ * y cae una patrulla con varios policías que despejan el salón y se llevan detenido a cualquiera que tengan adelante (vos incluido).
  * Ficción estilizada: nadie muere en pantalla, los heridos se caen un rato y se retiran.
  * Se carga después de games.js/clients.js y antes de story.js. Usa window.CasinoCombatBridge (game.js) y los números de D.COMBAT (data.js).
  * Guardado: S.combat = { own, eq, ammo, dmg, stains, mafiaDay, mafiaDone, aurelio, stats } (validado acá, campo por campo).
- * Secciones: BASE · GUARDADO · HUD · ARMA EN MANO · PUNTERÍA · MÁQUINAS · CLIENTES · SANGRE · NOQUEADO Y SEGURIDAD · AURELIO Y LA MAFIA · TIENDA · API.
+ * Secciones: BASE · GUARDADO · HUD · ARMA EN MANO · PUNTERÍA · MÁQUINAS · CLIENTES Y PERSONAL · SANGRE · NOQUEADO Y SEGURIDAD · AURELIO Y LA MAFIA ·
+ * ESCÁNDALO Y POLICÍA · TIENDA · API.
  */
 (() => {
 "use strict";
@@ -34,7 +38,7 @@ const checked = new WeakSet();
 function clean(raw) {
   raw = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const int = (v, d, lo, hi) => { v = Math.round(+v); return Number.isFinite(v) ? clamp(v, lo, hi) : d; };
-  const own = {}; for (const w of CB.weapons) own[w.id] = !!(raw.own && raw.own[w.id]);
+  const own = {}; for (const w of CB.weapons) own[w.id] = !!w.free || !!(raw.own && raw.own[w.id]); // los puños vienen de fábrica
   const dmg = {};
   if (raw.dmg && typeof raw.dmg === "object") for (const k of Object.keys(raw.dmg).slice(0, 80)) { const v = +raw.dmg[k]; if (Number.isFinite(v) && v > 0) dmg[String(k).slice(0, 40)] = clamp(v, 0, 8); }
   const stains = [];
@@ -45,7 +49,7 @@ function clean(raw) {
   return {
     own, eq: typeof raw.eq === "string" && own[raw.eq] ? raw.eq : "", ammo: int(raw.ammo, 0, 0, CB.ammo.max), dmg, stains,
     mafiaDay: int(raw.mafiaDay, 0, 0, 1e6), mafiaDone: int(raw.mafiaDone, 0, 0, 1e6), aurelio: !!raw.aurelio,
-    stats: { hits: int(st.hits, 0, 0, 1e6), kos: int(st.kos, 0, 0, 1e6), shots: int(st.shots, 0, 0, 1e6), wounded: int(st.wounded, 0, 0, 1e6), mafia: int(st.mafia, 0, 0, 1e6) },
+    stats: { hits: int(st.hits, 0, 0, 1e6), kos: int(st.kos, 0, 0, 1e6), shots: int(st.shots, 0, 0, 1e6), wounded: int(st.wounded, 0, 0, 1e6), mafia: int(st.mafia, 0, 0, 1e6), jailed: int(st.jailed, 0, 0, 1e6) },
   };
 }
 function C() {
@@ -57,7 +61,8 @@ function C() {
 // estado transitorio (se rearma al cargar una partida)
 const R = {
   s: null, cd: 0, swing: null, flash: 0, hp: CB.player.hp, hurtT: 99, ko: null, koK: 0, resp: null, shake: 0, flashRed: 0, kick: 0,
-  stains: [], mf: null, bannerT: 0, hudKey: "", aim: null,
+  stains: [], mf: null, bannerT: 0, hudKey: "", aim: null, jab: 0,
+  clock: 0, riot: 0, blame: { player: 0, clientes: 0, mafia: 0 }, lastViolence: -99, riotCool: 0, pol: null, jail: null, riotKey: "",
 };
 function sync() {
   const s = S(); if (!s) return false;
@@ -69,7 +74,9 @@ function reset() {
   for (const st of R.stains) dropStain(st, true); R.stains.length = 0;
   if (R.resp) endResponder(true);
   if (R.mf) endMafia(true);
+  if (R.pol) endPolice(true);
   R.ko = null; R.koK = 0; R.hp = CB.player.hp; R.hurtT = 99; R.cd = 0; R.swing = null; R.shake = 0; R.flashRed = 0;
+  R.riot = 0; R.blame = { player: 0, clientes: 0, mafia: 0 }; R.lastViolence = -99; R.riotCool = 0; R.jail = null; showJail(0);
   for (const c of G.customers) if (c.cmb) c.cmb = null;
   for (const n of G.staffNpcs) if (n.cmb) n.cmb = null;
   showKo(0); banner(null);
@@ -91,11 +98,35 @@ css.textContent = `
 #cmbBan{position:fixed;left:50%;top:20%;transform:translateX(-50%);z-index:10;pointer-events:none;text-align:center;color:#ffd9d4;font:800 40px 'IBM Plex Mono',monospace;text-shadow:0 0 18px #c01010,0 3px 0 #300;letter-spacing:1px;padding:12px 26px;background:rgba(40,0,0,.78);border:2px solid #c01818;border-radius:10px;animation:cmbShake .12s infinite}
 #cmbBan[hidden]{display:none}
 #cmbBan small{display:block;font-size:16px;font-weight:600;letter-spacing:0;margin-top:6px;text-shadow:none;color:#f3e9d2}
+#cmbRiot{position:fixed;left:50%;bottom:118px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;padding:5px 12px;background:rgba(7,20,15,.82);border:1px solid rgba(217,168,74,.45);border-radius:10px;color:#f3e9d2;font:600 12px 'IBM Plex Mono',monospace;z-index:7;pointer-events:none}
+#cmbRiot[hidden]{display:none}
+#cmbRiot .bar{width:110px;height:8px;border-radius:5px;background:#1d2530;overflow:hidden}
+#cmbRiot .bar i{display:block;height:100%;background:linear-gradient(90deg,#d9a84a,#e0503a)}
+#cmbRiot.pol{border-color:#4d7fe0;animation:cmbSiren .5s steps(1) infinite}
+@keyframes cmbSiren{0%{box-shadow:0 0 14px #e02a2a}50%{box-shadow:0 0 14px #2a6ae0}}
+#cmbJail{position:fixed;inset:0;pointer-events:none;z-index:11;background:#06080c;opacity:0;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#f3e9d2;font:700 28px 'IBM Plex Mono',monospace;text-align:center;background-image:repeating-linear-gradient(90deg,rgba(150,160,175,.0) 0 70px,rgba(150,160,175,.55) 70px 82px)}
+#cmbJail small{display:block;margin-top:10px;font-size:15px;font-weight:500;opacity:.9}
 @keyframes cmbShake{0%{transform:translate(-50%,0)}25%{transform:translate(-49.7%,1px)}50%{transform:translate(-50.3%,-1px)}75%{transform:translate(-49.8%,1px)}100%{transform:translate(-50%,0)}}`;
 document.head.appendChild(css);
 const mk = (id, tag) => { const e = document.createElement(tag || "div"); e.id = id; document.body.appendChild(e); return e; };
-const hudEl = mk("cmbHud"), redEl = mk("cmbRed"), koEl = mk("cmbKo"), banEl = mk("cmbBan");
-hudEl.hidden = true; banEl.hidden = true;
+const hudEl = mk("cmbHud"), redEl = mk("cmbRed"), koEl = mk("cmbKo"), banEl = mk("cmbBan"), riotEl = mk("cmbRiot"), jailEl = mk("cmbJail");
+hudEl.hidden = true; banEl.hidden = true; riotEl.hidden = true;
+let lastJail = -1;
+function showJail(k) {
+  k = Math.round(k * 100) / 100; if (k === lastJail) return; lastJail = k;
+  jailEl.style.opacity = String(k);
+  if (k > 0 && !jailEl.firstChild) jailEl.innerHTML = `¡Te llevaron detenido!<small>Por armar lío en el salón. Multa de ${fmt(CB.police.fine)} y ${CB.police.jailHours} horas en la comisaría.</small>`;
+  if (k === 0) jailEl.innerHTML = "";
+}
+function updateRiotHud() {
+  const P = R.pol, v = Math.round(R.riot), show = (v > 2 || !!P) && !G.ui.panel && !R.jail;
+  const txt = !P ? (v >= CB.riot.max * 0.7 ? "¡Ojo! Están por llamar a la policía" : "Escándalo") : P.phase === "coming" ? `¡Llamaron al 911! Patrulla en ${Math.max(0, Math.ceil(CB.police.delay - P.t))} s` : P.phase === "leave" ? "La policía se va" : "¡Policía en el casino!";
+  const key = show + ":" + v + ":" + txt;
+  if (key === R.riotKey) return; R.riotKey = key;
+  riotEl.hidden = !show; if (!show) return;
+  riotEl.classList.toggle("pol", !!P && P.phase !== "leave");
+  riotEl.innerHTML = `<span>${esc(txt)}</span>` + (P ? "" : `<span class="bar"><i style="width:${clamp(v / CB.riot.max * 100, 0, 100).toFixed(0)}%"></i></span>`);
+}
 let lastKo = -1;
 function showKo(k) {
   k = Math.round(k * 100) / 100; if (k === lastKo) return; lastKo = k;
@@ -151,8 +182,19 @@ const models = {};
   const fl = new T.Sprite(mat.flash); fl.scale.set(0.22, 0.22, 1); fl.position.set(0, 0.03, -0.32); fl.visible = false; g.add(fl); g.userData.flash = fl;
   models.pistol = g;
 }
+{ // puños: las dos manos, cerradas
+  const g = new T.Group();
+  for (const sx of [-1, 1]) {
+    const f = new T.Group(); f.position.x = sx * 0.16;
+    const fist = new T.Mesh(new T.BoxGeometry(0.1, 0.09, 0.11), mat.skin); f.add(fist);
+    const knuckles = new T.Mesh(new T.BoxGeometry(0.1, 0.03, 0.03), mat.skin); knuckles.position.set(0, 0.045, -0.04); f.add(knuckles);
+    const arm = new T.Mesh(new T.BoxGeometry(0.075, 0.075, 0.24), mat.dark); arm.position.z = 0.16; f.add(arm);
+    g.add(f); g.userData[sx < 0 ? "l" : "r"] = f;
+  }
+  models.fists = g;
+}
 for (const k in models) { models[k].visible = false; vm.add(models[k]); }
-const REST = { knife: { p: [0.26, -0.3, -0.5], r: [-0.55, 0, -0.25] }, bat: { p: [0.3, -0.38, -0.5], r: [-0.45, 0, -0.35] }, pistol: { p: [0.22, -0.2, -0.4], r: [0, 0, 0] } };
+const REST = { fists: { p: [0.02, -0.27, -0.5], r: [0.12, 0, 0] }, knife: { p: [0.26, -0.3, -0.5], r: [-0.55, 0, -0.25] }, bat: { p: [0.3, -0.38, -0.5], r: [-0.45, 0, -0.35] }, pistol: { p: [0.22, -0.2, -0.4], r: [0, 0, 0] } };
 function setWeaponModel() {
   const c = C(); for (const k in models) models[k].visible = k === c.eq;
   vm.visible = !!c.eq && !!models[c.eq];
@@ -191,7 +233,8 @@ function aim(w) {
     if (s >= 0 && s <= w.range && (!best || s < best.s)) best = { kind, obj, s, x: ox + dx * s, y: oy + dy * s, z: oz + dz * s };
   };
   for (const m of G.machines) if (!m.dead && m.slot) tryHit("machine", m, m.slot.x, m.slot.z, melee ? 0.8 : 0.5, 0, 2.1);
-  for (const c of G.customers) if (alive(c) && c.state !== "caught") tryHit("customer", c, c.x, c.z, melee ? 0.55 : 0.34, 0.05, 1.85);
+  for (const c of G.customers) if (alive(c) && c.state !== "caught" && !(c.cmb && c.cmb.mode === "cuffed")) tryHit("customer", c, c.x, c.z, melee ? 0.55 : 0.34, 0.05, 1.85);
+  for (const n of G.staffNpcs) if (canHitStaff(n)) tryHit("staff", n, n.x, n.z, melee ? 0.55 : 0.34, 0.05, 1.85);
   const au = aurelioNpc(); if (au) tryHit("aurelio", au, au.x, au.z, melee ? 0.6 : 0.36, 0.05, 1.9);
   return best;
 }
@@ -202,7 +245,7 @@ function aim(w) {
 const equipped = () => WDEF(C().eq);
 function click() {
   if (!sync()) return false;
-  const w = equipped(); if (!w || R.ko) return false;
+  const w = equipped(); if (!w || R.ko || R.jail) return false;
   if (window.CasinoBuild && window.CasinoBuild.active) return false;
   attack(w); return true;
 }
@@ -211,19 +254,20 @@ function attack(w) {
   if (R.cd > 0) return;
   if (w.kind === "ranged" && c.ammo <= 0) { R.cd = 0.35; G.SFX.tick && G.SFX.tick(); G.toast("Sin municiones. Comprá una caja en la compu (pestaña Armas).", "bad"); return; }
   R.cd = w.cd;
-  if (w.kind === "melee") { R.swing = { t: 0, dur: Math.min(0.55, w.cd * 0.85) }; G.sfx("swing", player.x, player.z); }
+  if (w.kind === "melee") { R.swing = { t: 0, dur: Math.min(0.55, w.cd * 0.85) }; R.jab = 1 - R.jab; G.sfx("swing", player.x, player.z); }
   else { c.ammo--; c.stats.shots++; R.swing = { t: 0, dur: 0.18, shot: true }; player.pitch = clamp(player.pitch + 0.025, -1.45, 1.45); G.sfx("shot", player.x, player.z); }
   const hit = aim(w);
   if (hit) {
     if (hit.kind === "machine") hitMachine(hit.obj, w, hit);
     else if (hit.kind === "customer") hitCustomer(hit.obj, w, hit);
+    else if (hit.kind === "staff") hitStaff(hit.obj, w, hit);
     else if (hit.kind === "aurelio") hitAurelio(hit.obj, w, hit);
   }
   if (w.kind === "ranged") noise(player.x, player.z);
 }
 // un disparo se oye: los clientes cercanos se asustan; hacerlo seguido te cuesta reputación y calor
 function noise(x, z) {
-  G.Heat.add(1.2, "disparo");
+  G.Heat.add(1.2, "disparo"); violence(CB.riot.playerShot);
   for (const c of G.customers) {
     if (!alive(c) || c.cmb || c.state === "leave" || c.state === "flee" || c.state === "caught") continue;
     const d = dist(c.x, c.z, x, z);
@@ -237,6 +281,13 @@ function scare(x, z, r, chance) { for (const c of G.customers) if (alive(c) && !
 // MÁQUINAS DAÑADAS
 // =====================================================================
 function hitMachine(m, w, hit) {
+  if (w.id === "fists") { // a mano limpia no se rompe nada: te duele a vos
+    spark(hit.x, clamp(hit.y, 0.5, 1.8), hit.z, 0.25); G.sfx("thud", m.slot.x, m.slot.z);
+    G.floatText(m.slot.x, 2.2, m.slot.z, "¡AUCH!", "#ffd45a");
+    hurtPlayer(CB.fists.machineHurt, null);
+    G.hint("cmbFistMachine", "Con la mano no rompés una máquina: te rompés los nudillos. Para eso hace falta un cuchillo o un bate.");
+    return;
+  }
   const c = C(), id = m.d.slot, add = w.kind === "melee" ? CB.machine.dmgMelee : CB.machine.dmgBullet;
   const was = c.dmg[id] || 0; c.dmg[id] = clamp(was + add, 0, 8);
   c.stats.hits++;
@@ -245,23 +296,32 @@ function hitMachine(m, w, hit) {
   if (!m.d.broken) G.breakMachine(m);
   else if (m.claimTech && m.claimTech.state === "work") m.claimTech.t += CB.machine.repairMulPerDmg * add * (m.claimTech.def.taskSec || 12); // el técnico ya estaba arreglándola: se complica
   G.hint("cmbMachine", "Rompiste una máquina a golpes: cuanto más daño, más tarda el técnico en repararla. Y mientras, no factura.");
-  G.Rep.change(-0.5);
+  G.Rep.change(-0.5); violence(CB.riot.playerMachine);
   shake(0.03);
 }
 function repairMul(m) { const d = (m && m.d && C().dmg[m.d.slot]) || 0; return clamp(1 + d * CB.machine.repairMulPerDmg, 1, CB.machine.repairMulMax); }
 function onRepair(m) { const c = C(); if (m && m.d && c.dmg[m.d.slot]) delete c.dmg[m.d.slot]; }
 
 // =====================================================================
-// CLIENTES: peleas, noqueados y heridos
+// CLIENTES Y PERSONAL: peleas, noqueados y heridos (los dos se defienden)
 // =====================================================================
-const isTough = c => CB.customer.toughTypes.includes(c.type && c.type.id);
+const isTough = c => c.kind === "staff" ? c.role === "sec" : CB.customer.toughTypes.includes(c.type && c.type.id);
+const isStaff = c => c.kind === "staff";
+const canHitStaff = n => !!(n && !n.dead && n.person && !n.temp && !n.lifeTask && !n.ownerTask && (!n.cmb || n.cmb.mode === "fight" || n.cmb.mode === "down"));
 function takeOver(c, mode) {
-  G.releaseGame(c);
-  if (c.shop && window.CasinoShop && window.CasinoShop.onDespawn) { try { window.CasinoShop.onDespawn(c); } catch (e) { /* sin fila */ } c.shop = null; }
-  c.state = "cmb"; c.path = null;
-  if (c.drink && c.drink.state !== "served") c.drink.state = "missed";
+  if (isStaff(c)) { // el empleado deja lo que estaba haciendo
+    const m = c.target; if (m && m.claimTech === c) { m.claimTech = null; if (m.api && m.api.setDoorOpen) m.api.setDoorOpen(false); }
+    c.target = null; c.thief = null; c.path = null;
+  } else {
+    G.releaseGame(c);
+    if (c.shop && window.CasinoShop && window.CasinoShop.onDespawn) { try { window.CasinoShop.onDespawn(c); } catch (e) { /* sin fila */ } c.shop = null; }
+    c.state = "cmb"; c.path = null;
+    if (c.drink && c.drink.state !== "served") c.drink.state = "missed";
+  }
   c.person.api.stand(); G.setBar(c.person, null); G.setIcon(c.person, null);
-  c.cmb = { mode, t: 0, hp: isTough(c) ? CB.customer.toughHp : CB.customer.hp, cd: 0.7, swing: 0, done: false, retarget: 0, gave: 0, dx: 0, dz: 0, fell: 0 };
+  const tough = isTough(c), hp = isStaff(c) ? (tough ? CB.staff.secHp : CB.staff.hp) : (tough ? CB.customer.toughHp : CB.customer.hp);
+  const hit = isStaff(c) ? (tough ? CB.staff.secHit : CB.staff.hit) : CB.customer.hit * (tough ? 1.25 : 1);
+  c.cmb = { mode, t: 0, hp, hit, cd: 0.7, swing: 0, done: false, retarget: 0, gave: 0, dx: 0, dz: 0, fell: 0 };
   return c.cmb;
 }
 function hitCustomer(c, w, hit) {
@@ -275,13 +335,44 @@ function hitCustomer(c, w, hit) {
     scare(c.x, c.z, 5, 0.2);
     G.hint("cmbFight", "¡Atacaste a un cliente! Se va a defender. Si te deja sin salud te noquea, y seguridad tiene que venir a rescatarte.");
   }
-  if (k.mode === "down" || k.mode === "shot") { G.sfx("punch", c.x, c.z); return; }
+  punch(c, k, w, hit);
+}
+function hitStaff(n, w, hit) {
+  const cs = C(); cs.stats.hits++;
+  let k = n.cmb;
+  if (!k) {
+    k = takeOver(n, "fight");
+    G.Rep.change(CB.blood.repMelee); G.Heat.add(CB.blood.heatMelee, "pelea");
+    n.person.api.face("angry", 6);
+    G.floatText(n.x, 2.5, n.z, pick(["¡Jefe! ¿Qué le pasa?", "¡Eh, tranquilo!", "¡Me las vas a pagar!"]), "#ffb0a0");
+    scare(n.x, n.z, 5, 0.2);
+    G.hint("cmbStaff", "Le pegaste a un empleado: se defiende igual que un cliente. Mientras pelea no trabaja.");
+  }
+  if (w.kind === "ranged") { // un disparo lo tumba: queda un rato en el piso y vuelve a trabajar
+    k.mode = "shot"; k.t = 0; k.fell = 0; k.hp = 0;
+    const dd = Math.max(0.5, dist(n.x, n.z, player.x, player.z)); k.dx = (n.x - player.x) / dd * 0.25; k.dz = (n.z - player.z) / dd * 0.25;
+    cs.stats.wounded++; addBlood(n.x + k.dx * 0.6, n.z + k.dz * 0.6);
+    G.floatText(n.x, 2.4, n.z, "¡Ay!", "#ff6a5a"); n.person.api.face("surprised", 4);
+    G.Rep.change(CB.blood.repHit); G.Heat.add(CB.blood.heatHit, "disparo"); scare(n.x, n.z, 12, 0.7); redFlash(0.25); shake(0.04);
+    return;
+  }
+  punch(n, k, w, hit);
+}
+// una piña / cuchillazo / batazo a una persona que ya está peleando
+function punch(c, k, w, hit) {
+  violence(CB.riot.playerHit);
+  if (k.mode === "down" || k.mode === "shot" || k.mode === "carried") { G.sfx("punch", c.x, c.z); return; }
   if (Math.random() < CB.customer.dodge && k.mode === "fight") { G.floatText(c.x, 2.2, c.z, "¡Esquivó!", "#9fd0ff"); return; }
   const dmg = Math.round(w.dmg * rnd(0.85, 1.15));
-  k.hp -= dmg; G.sfx("punch", c.x, c.z); spark(hit.x, clamp(hit.y, 0.6, 1.7), hit.z, 0.35);
-  G.floatText(c.x, 2.3, c.z, "-" + dmg, "#ff8a7a");
+  k.hp -= dmg; G.sfx("punch", c.x, c.z); spark(hit.x, clamp(hit.y, 0.6, 1.7), hit.z, w.id === "fists" ? 0.25 : 0.35);
+  G.floatText(c.x, 2.3, c.z, w.id === "fists" ? pick(["¡PUM!", "¡PAF!", "¡ZAS!"]) + " -" + dmg : "-" + dmg, "#ff8a7a");
   c.person.api.face("surprised", 0.6);
-  if (k.hp <= 0) { k.mode = "down"; k.t = 0; k.fell = 0; k.dx = (c.x - player.x) / Math.max(0.5, dist(c.x, c.z, player.x, player.z)) * 0.3; k.dz = (c.z - player.z) / Math.max(0.5, dist(c.x, c.z, player.x, player.z)) * 0.3; G.floatText(c.x, 2.6, c.z, "¡K.O.!", "#ffd45a"); }
+  if (k.hp <= 0) {
+    const dd = Math.max(0.5, dist(c.x, c.z, player.x, player.z));
+    k.mode = "down"; k.t = 0; k.fell = 0; k.dx = (c.x - player.x) / dd * 0.3; k.dz = (c.z - player.z) / dd * 0.3;
+    G.floatText(c.x, 2.6, c.z, "¡K.O.!", "#ffd45a"); c.person.api.face("dizzy", CB.customer.downSec);
+    violence(CB.riot.playerKo);
+  }
 }
 function shootCustomer(c, hit) {
   const cs = C();
@@ -313,8 +404,8 @@ function actor(c, dt) {
   const p = c.person, pd = dist(c.x, c.z, player.x, player.z);
   switch (k.mode) {
     case "fight": {
-      if (R.ko) { k.mode = "loom"; break; }
-      if (k.t > 28 || pd > 22) { endFight(c); return true; }
+      if (R.ko || R.jail) { k.mode = "loom"; break; }
+      if (k.t > (isStaff(c) ? 12 : 28) || pd > 22) { endFight(c); return true; }
       G.faceTo(c, player.x, player.z);
       if (pd > CB.customer.reach) {
         k.retarget -= dt;
@@ -326,7 +417,7 @@ function actor(c, dt) {
         if (k.swing <= 0 && k.cd <= 0) { k.swing = 0.001; k.cd = CB.customer.hitCd; p.api.gesture("swing", 0.55); }
         if (k.swing > 0) {
           k.swing += dt;
-          if (k.swing >= 0.3 && !k.done) { k.done = true; if (pd <= CB.customer.reach + 0.4) hurtPlayer(Math.round(CB.customer.hit * (isTough(c) ? 1.25 : 1) * rnd(0.85, 1.15)), c); }
+          if (k.swing >= 0.3 && !k.done) { k.done = true; if (pd <= CB.customer.reach + 0.4) { hurtPlayer(Math.round(k.hit * rnd(0.85, 1.15)), c); disturb(CB.riot.customerHit, "clientes"); } }
           if (k.swing >= 0.6) { k.swing = 0; k.done = false; }
         }
       }
@@ -334,7 +425,7 @@ function actor(c, dt) {
     }
     case "loom": // el agresor se queda parado sobre el dueño noqueado, hasta que llega seguridad
       G.faceTo(c, player.x, player.z); p.api.idle(dt);
-      if (!R.ko) { endFight(c); return true; }
+      if (!R.ko && !R.jail) { endFight(c); return true; }
       break;
     case "down": case "shot": {
       fall(c, k, dt);
@@ -347,6 +438,9 @@ function actor(c, dt) {
       if (k.t > CB.customer.downSec) { standUp(c); c.cmb = null; endFight(c, true); return true; }
       break;
     }
+    case "cuffed": // esposado: lo lleva un policía (ESCÁNDALO Y POLICÍA)
+      if (!k.cop) { p.api.idle(dt); if (k.t > 3) { G.despawnCustomer(c); } }
+      break;
   }
   return true;
 }
@@ -354,13 +448,18 @@ function endFight(c, hurt) {
   c.cmb = null;
   if (!alive(c)) return;
   standUp(c);
+  if (isStaff(c)) { c.person.api.face("sad", 6); G.backHome(c); return; } // el empleado vuelve a su puesto
   c.state = "idle"; // leaveCustomer ignora solo leave/flee/caught
   G.leaveCustomer(c);
   if (c.state === "leave") { c.person.api.face("sad", 30); if (hurt) c.speed *= 0.6; else c.state = "flee"; }
 }
+// el personal peleando (game.js no lo mueve mientras tenga n.cmb)
+function updateStaffFights(dt) {
+  for (const n of G.staffNpcs) if (n.cmb && n.cmb.hp != null && !n.cmb.r && !n.cmb.mfFall) actor(n, dt);
+}
 function onDespawn(c) { if (c && c.cmb) c.cmb = null; }
 function hurtPlayer(d, from) {
-  if (R.ko) return;
+  if (R.ko || R.jail) return;
   R.hp = Math.max(0, R.hp - d); R.hurtT = 0;
   redFlash(0.55); shake(0.05); G.sfx("punch", player.x, player.z);
   player.pitch = clamp(player.pitch + 0.06, -1.45, 1.45);
@@ -411,11 +510,11 @@ const atrPenalty = () => R.stains.length * CB.blood.atr;
 // =====================================================================
 // NOQUEADO Y SEGURIDAD PRIVADA
 // =====================================================================
-const ko = () => !!R.ko;
+const ko = () => !!(R.ko || R.jail); // noqueado o detenido: no te movés
 function startKO(from) {
   const cs = C(); cs.stats.kos++;
   R.ko = { t: 0, aggr: from, woke: false, called: false };
-  for (const c of G.customers) if (c.cmb && c.cmb.mode === "fight") { c.cmb.mode = "loom"; }
+  for (const c of G.customers.concat(G.staffNpcs)) if (c.cmb && c.cmb.mode === "fight") { c.cmb.mode = "loom"; }
   showKo(R.koK); shake(0.07); redFlash(0.7);
   G.toast("¡Te noquearon! Quedaste tirado en el piso.", "bad");
   G.Rep.change(-4);
@@ -494,7 +593,7 @@ function wake() {
   const lost = Math.floor((S().pocket || 0) * CB.player.koPocketLoss);
   if (lost > 0) { S().pocket -= lost; }
   G.toast(`Te despertaste. Seguridad se ocupó del agresor.${lost > 0 ? ` Se te cayeron ${fmt(lost)} del bolsillo.` : ""}`, lost > 0 ? "bad" : "good");
-  for (const c of G.customers) if (c.cmb && c.cmb.mode === "loom") endFight(c);
+  for (const c of G.customers.concat(G.staffNpcs)) if (c.cmb && c.cmb.mode === "loom") endFight(c);
   G.updateHud(true); G.save(true);
 }
 
@@ -508,7 +607,7 @@ function hitAurelio(n, w) {
   banner(CB.mafia.speak, `Don Aurelio hizo una llamada: a las ${CB.mafia.hour}:00 ${c.mafiaDay === S().day ? "de hoy" : "de mañana"} vienen por vos.`, 5);
   G.sfx("alarm", n.x, n.z); redFlash(0.4); shake(0.05);
   G.floatText(n.x, 2.3, n.z, "¡Ay!", "#ffd45a"); n.api.face && n.api.face("angry", 5);
-  G.Heat.add(8, "mafia"); G.Rep.change(-3);
+  G.Heat.add(8, "mafia"); G.Rep.change(-3); violence(CB.riot.playerHit);
   const fl = window.CasinoStory && window.CasinoStory.flags; if (fl) fl.aurelioMad = true;
   n.mode = "linger"; n.linger = 0.5; // se va del local
   G.save(true);
@@ -531,7 +630,7 @@ function makeCar() {
 }
 const gunGeo = new T.BoxGeometry(0.05, 0.07, 0.34);
 function dressGunman(p) {
-  if (p.cmbGun) return;
+  if (p.cmbGun) { p.cmbGun.visible = true; return; } // persona reciclada (a lo mejor la policía le había sacado el arma)
   const J = p.api.joints, gun = new T.Mesh(gunGeo, mat.dark); gun.position.set(0, -0.3, -0.12); J.elbowR.add(gun);
   const fl = new T.Sprite(mat.flash); fl.scale.set(0.5, 0.5, 1); fl.position.set(0, -0.3, -0.42); fl.visible = false; J.elbowR.add(fl);
   p.cmbGun = gun; p.cmbFlash = fl;
@@ -542,6 +641,7 @@ function startMafia() {
   cs.mafiaDone = S().day; cs.mafiaDay = 0; cs.stats.mafia++;
   const mf = R.mf = { t: 0, phase: "arrive", cars: [], men: [], shootT: 0, nextShot: 0.3, nextBreak: 0.4, machList: [], killT: -1, killed: false, sweep: 0 };
   banner("¡LA MAFIA ESTÁ ACÁ!", "Autos negros frente al casino…", 4);
+  disturb(CB.riot.mafiaArrive, "mafia");
   G.sfx("horn", 0, -16); G.sfx("alarm", 0, -12);
   for (let i = 0; i < M.cars; i++) {
     const g = makeCar(); const px = -9 + i * 9; g.position.set(-48, 0, -18.3 - (i % 2) * 0.1); scene.add(g);
@@ -572,7 +672,8 @@ function updateMafia(dt) {
   if (mf.sweep <= 0) { mf.sweep = 0.6; for (const c of G.customers) if (alive(c) && !c.cmb && c.state !== "leave" && c.state !== "flee" && c.state !== "caught") panic(c); }
   // pistoleros
   for (const man of mf.men) {
-    const p = man.person; man.t += dt;
+    const p = man.person; if (!p || man.state === "cuffed" || man.state === "gone") continue; // la policía se los llevó
+    man.t += dt;
     if (man.flash > 0) { man.flash -= dt; if (man.flash <= 0 && p.cmbFlash) p.cmbFlash.visible = false; }
     if (man.state === "wait") { if (mf.t > 4.4 + man.car * 0.5) { man.state = "go"; p.group.visible = true; G.placeAgent(man, man.x, man.z); G.goTo(man, G.DOOR.x, -11); man.stage = 0; } }
     else if (man.state === "go") {
@@ -589,6 +690,13 @@ function updateMafia(dt) {
     if (mf.t > 7 + 1.2 && (inside >= Math.ceil(mf.men.length / 2) || mf.t > 11)) { mf.phase = "shoot"; mf.shootT = 0; startShooting(mf); }
   } else if (mf.phase === "shoot") {
     mf.shootT += dt;
+    disturb(CB.riot.mafiaPerSec * dt, "mafia");
+    if (!mf.men.some(m => m.state === "shoot" || m.state === "go" || m.state === "wait")) { // la policía se llevó a todos: se cortó el tiroteo
+      mf.phase = "leave"; mf.leaveT = 0; mf.cut = true; for (const car of mf.cars) car.state = "wait";
+      if (mf.killed && !mf.removed) { mf.removed = true; killStaff(); } // el personal que ya había caído no se salva
+      banner("¡La policía cortó el tiroteo!", "Se llevaron a los pistoleros de la Mafia.", 5);
+      return;
+    }
     mf.nextShot -= dt;
     if (mf.nextShot <= 0) {
       mf.nextShot = rnd(0.1, 0.28);
@@ -635,12 +743,15 @@ function killStaff() {
 function endMafia(silent) {
   const mf = R.mf; if (!mf) return; R.mf = null;
   for (const car of mf.cars) scene.remove(car.g);
-  for (const man of mf.men) { if (man.person) { if (man.person.cmbFlash) man.person.cmbFlash.visible = false; G.releasePerson(man.person); } }
+  for (const man of mf.men) { if (man.person && man.state !== "cuffed") { if (man.person.cmbFlash) man.person.cmbFlash.visible = false; G.releasePerson(man.person); man.person = null; } } // a los esposados los suelta la policía
   if (silent) return;
   const M = CB.mafia;
   G.Rep.change(M.rep); G.Heat.add(M.heat, "mafia");
-  G.toast("La Mafia se fue. Máquinas destrozadas y todo el personal fuera: hay que contratar de nuevo.", "bad");
-  banner("La Mafia se fue", "Reparaciones largas y personal nuevo: hay que recontratar.", 5);
+  if (mf.cut && !mf.killed) { G.toast("La policía cortó el tiroteo a tiempo: el personal se salvó, pero hay máquinas para reparar.", "good"); banner("La Mafia se fue", "La policía llegó a tiempo: tu personal sigue entero.", 5); }
+  else {
+    G.toast("La Mafia se fue. Máquinas destrozadas y todo el personal fuera: hay que contratar de nuevo.", "bad");
+    banner("La Mafia se fue", "Reparaciones largas y personal nuevo: hay que recontratar.", 5);
+  }
   G.updateHud(true); G.save(true);
 }
 // el personal caído en el tiroteo
@@ -659,6 +770,251 @@ function checkMafia() {
 }
 
 // =====================================================================
+// ESCÁNDALO Y POLICÍA: si el lío llega al tope, cae una patrulla que despeja el salón y se lleva a cualquiera que tenga adelante
+// =====================================================================
+const RB = CB.riot, PB = CB.police;
+function disturb(n, src) {
+  if (!(n > 0) || !S() || R.jail) return;
+  R.riot = clamp(R.riot + n, 0, RB.max);
+  if (!(src in R.blame)) src = "clientes";
+  R.blame[src] += n;
+  if (R.riot >= RB.max && !R.pol && (R.riotCool <= 0 || src === "mafia") && !S().dayOver && !S().gameOver) callPolice();
+}
+function violence(n) { R.lastViolence = R.clock; disturb(n, "player"); } // lo que hacés vos: además te vuelve sospechoso
+const wanted = () => R.clock - R.lastViolence < RB.blameRecentSec;
+function decayRiot(dt) {
+  if (R.riotCool > 0) R.riotCool -= dt;
+  if (R.riot <= 0 || (R.pol && R.pol.phase !== "leave")) return;
+  const before = R.riot; R.riot = Math.max(0, R.riot - RB.decayPerSec * dt);
+  const k = R.riot / before; for (const key in R.blame) R.blame[key] *= k;
+}
+function culprit() { const b = R.blame; return b.mafia >= b.player && b.mafia >= b.clientes ? "mafia" : b.player >= b.clientes ? "player" : "clientes"; }
+// --- patrulleros ---------------------------------------------------------
+const polMat = {
+  body: new T.MeshStandardMaterial({ color: 0xe9edf2, roughness: 0.35, metalness: 0.3 }), stripe: new T.MeshStandardMaterial({ color: 0x1f4fa8, roughness: 0.4 }),
+  red: new T.MeshBasicMaterial({ color: 0xff2020 }), blue: new T.MeshBasicMaterial({ color: 0x2060ff }), // sin luces de verdad: solo color (máx 8 luces)
+};
+const polGeo = { stripe: new T.BoxGeometry(4.42, 0.14, 1.87), light: new T.BoxGeometry(0.3, 0.14, 0.5) };
+function makePatrol() {
+  const g = new T.Group();
+  const b = new T.Mesh(geo.body, polMat.body); b.position.y = 0.62; g.add(b);
+  const st = new T.Mesh(polGeo.stripe, polMat.stripe); st.position.y = 0.66; g.add(st);
+  const c = new T.Mesh(geo.cab, carMat.glass); c.position.set(-0.2, 1.17, 0); g.add(c);
+  for (const [x, z] of [[1.4, 0.92], [1.4, -0.92], [-1.4, 0.92], [-1.4, -0.92]]) { const w = new T.Mesh(geo.wheel, carMat.tire); w.rotation.x = Math.PI / 2; w.position.set(x, 0.36, z); g.add(w); }
+  for (const z of [-0.65, 0.65]) { const l = new T.Mesh(geo.lamp, carMat.head); l.position.set(2.2, 0.68, z); g.add(l); const t = new T.Mesh(geo.lamp, carMat.tail); t.position.set(-2.2, 0.68, z); g.add(t); }
+  const lr = new T.Mesh(polGeo.light, polMat.red); lr.position.set(-0.2, 1.51, -0.3); g.add(lr);
+  const lb = new T.Mesh(polGeo.light, polMat.blue); lb.position.set(-0.2, 1.51, 0.3); g.add(lb);
+  return g;
+}
+const POL_LOOKS = [{ skin: 0xc68642, hair: 0x1a1008 }, { skin: 0xf1c27d, hair: 0x2a1a10, female: true }, { skin: 0xe0ac69, hair: 0x101010 }, { skin: 0x8d5524, hair: 0x101010 }, { skin: 0xffdbac, hair: 0x5a3a1a, female: true }, { skin: 0xc68642, hair: 0x101010 }];
+function callPolice() {
+  const who = culprit();
+  R.pol = { phase: "coming", t: 0, st: 0, cars: [], cops: [], sirenT: 0, scareT: 0, arrests: 0, who, wantPlayer: false, entered: false };
+  const why = who === "mafia" ? "Los vecinos escucharon el tiroteo de la Mafia." : who === "player" ? "Alguien te vio repartiendo piñas en el salón." : "Las peleas de los clientes se escucharon desde la calle.";
+  banner("¡Llamaron a la policía!", why + ` La patrulla llega en ${PB.delay} segundos.`, 4);
+  G.toast("¡Llamaron al 911! Viene una patrulla: van a llevarse detenido a cualquiera que tengan adelante. Si estuviste peleando, te buscan a vos también.", "bad");
+  G.hint("cmbPolice", "Cuando hay mucho escándalo (peleas, disparos, la Mafia) cae la policía. Despejan el salón y se llevan a quien se les cruce: correte de su camino.");
+  G.sfx("alarm", G.DOOR.x, G.DOOR.z);
+}
+function startPatrol() {
+  const P = R.pol; P.phase = "arrive"; P.t = 0;
+  for (let i = 0; i < PB.cars; i++) {
+    const g = makePatrol(); g.rotation.y = Math.PI; const x1 = 15 + i * 7; g.position.set(52 + i * 6, 0, -18.3); scene.add(g);
+    P.cars.push({ g, x0: 52 + i * 6, x1, delay: i * 0.4, state: "in", t: 0 });
+  }
+  for (let i = 0; i < PB.officers; i++) {
+    const lk = POL_LOOKS[i % POL_LOOKS.length], car = i % PB.cars;
+    const p = G.acquirePerson("police", i, { uniform: "police", skin: lk.skin, hair: lk.hair, female: !!lk.female });
+    const cop = { kind: "police", person: p, x: 0, z: 0, path: null, state: "wait", car, t: 0, tgt: null, pris: [], re: 0, roam: null, roamT: 0 };
+    p.agent = cop; p.group.visible = false; G.placeAgent(cop, 15 + car * 7 - 1 + (i >> 1) * 1.2, -16.4);
+    P.cops.push(cop);
+  }
+  G.sfx("horn", 20, -17);
+}
+// ¿a quién buscan? primero a los que pelean (vos incluido si pegaste hace poco), después patrullan
+function targets(P) {
+  const out = [];
+  if (!R.jail && (P.wantPlayer || wanted())) out.push({ kind: "player", obj: player, x: player.x, z: player.z });
+  for (const c of G.customers) {
+    if (!alive(c) || (c.cmb && c.cmb.mode === "cuffed")) continue;
+    const fighting = (c.cmb && (c.cmb.mode === "fight" || c.cmb.mode === "loom")) || (c.life && c.life.role === "fighter" && c.life.e && !c.life.e.done);
+    if (fighting) out.push({ kind: "customer", obj: c, x: c.x, z: c.z });
+  }
+  if (R.mf) for (const m of R.mf.men) if (m.person && m.person.group.visible && (m.state === "go" || m.state === "shoot")) out.push({ kind: "mafia", obj: m, x: m.x, z: m.z });
+  for (const n of G.staffNpcs) if (n.cmb && n.cmb.mode === "fight" && n.person) out.push({ kind: "staff", obj: n, x: n.x, z: n.z });
+  return out;
+}
+function pickTarget(P, cop) {
+  const taken = new Set(P.cops.filter(o => o !== cop && o.tgt).map(o => o.tgt.obj));
+  let best = null, bd = Infinity;
+  for (const t of targets(P)) {
+    if (taken.has(t.obj) && t.kind !== "player") continue;
+    const d = dist(cop.x, cop.z, t.x, t.z) * (t.kind === "player" ? 0.6 : 1); // al dueño lo buscan con ganas
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
+}
+const ahead = (cop, x, z) => { const ry = cop.person.group.rotation.y, d = Math.max(0.01, dist(cop.x, cop.z, x, z)); return (Math.sin(ry) * (x - cop.x) + Math.cos(ry) * (z - cop.z)) / d > 0.2; };
+function arrest(cop, t) {
+  const P = R.pol;
+  if (t.kind === "player") { arrestPlayer(cop); return; }
+  if (t.kind === "staff") { const n = t.obj; G.floatText(n.x, 2.4, n.z, "¡Quieto ahí!", "#9fc4ff"); endFight(n); return; } // al empleado lo calman y vuelve a trabajar
+  if (t.kind === "mafia") {
+    const m = t.obj; m.state = "cuffed"; m.path = null;
+    if (m.person.cmbFlash) m.person.cmbFlash.visible = false; if (m.person.cmbGun) m.person.cmbGun.visible = false;
+    m.person.api.stand(); G.floatText(m.x, 2.4, m.z, "¡Detenido!", "#9fc4ff");
+  } else {
+    const c = t.obj;
+    if (c.life && window.CasinoLife && window.CasinoLife.drop) window.CasinoLife.drop(c);
+    c.life = null; c.lifeAct = null;
+    if (c.cmb) standUp(c);
+    const k = takeOver(c, "cuffed"); k.cop = cop;
+    c.person.api.face("sad", 40); G.floatText(c.x, 2.4, c.z, "¡Detenido!", "#9fc4ff");
+  }
+  cop.pris.push(t.obj); P.arrests++;
+  G.Rep.change(PB.perArrestRep); G.Heat.add(PB.perArrestHeat, "policía");
+  G.sfx("tape", cop.x, cop.z);
+}
+function arrestPlayer(cop) {
+  if (R.jail) return;
+  const P = R.pol;
+  R.jail = { t: 0 };
+  if (R.ko) { R.ko = null; lastKo = -1; }
+  if (P) P.wantPlayer = false;
+  R.lastViolence = -99;
+  for (const o of (P ? P.cops : [])) if (o.tgt && o.tgt.kind === "player") o.tgt = null;
+  if (cop) G.floatText(cop.x, 2.4, cop.z, "¡Quedás detenido!", "#9fc4ff");
+  G.sfx("tape", player.x, player.z); shake(0.05);
+  G.toast("¡La policía te llevó detenido!", "bad");
+}
+function updateJail(dt) {
+  const j = R.jail; if (!j) return;
+  j.t += dt;
+  if (j.t < PB.jailSec) return;
+  R.jail = null;
+  const s = S(), fine = Math.min(PB.fine, Math.max(0, Math.round(s.bank)));
+  if (fine > 0) { G.Economy.force("fines", fine); if (s.today && s.today.st) s.today.st.fines = (s.today.st.fines || 0) + fine; }
+  const lost = Math.floor((s.pocket || 0) * PB.pocketLoss); if (lost > 0) s.pocket -= lost;
+  G.Rep.change(PB.rep); G.Heat.add(PB.heat, "policía");
+  s.minutes = Math.min(s.minutes + PB.jailHours * 60, CFG.dayEnd * 60 - 0.5);
+  player.x = G.DOOR.x; player.z = -7.4; player.yaw = Math.PI; player.pitch = 0; R.hp = CB.player.hp;
+  const msg = `Saliste de la comisaría después de ${PB.jailHours} horas. Multa: ${fmt(fine)}${lost > 0 ? ` y te sacaron ${fmt(lost)} del bolsillo` : ""}.`;
+  if (s.today && Array.isArray(s.today.notes)) s.today.notes.push("Te llevaron detenido por armar lío en el salón.");
+  G.toast(msg, "bad");
+  C().stats.jailed = (C().stats.jailed || 0) + 1;
+  G.updateHud(true); G.save(true);
+}
+// los detenidos caminan detrás del policía que los lleva
+function dragPrisoners(cop, dt, moving) {
+  const ry = cop.person.group.rotation.y, fx = Math.sin(ry), fz = Math.cos(ry);
+  cop.pris = cop.pris.filter(a => a.person && !a.dead);
+  cop.pris.forEach((a, i) => {
+    const back = 0.75 * (i + 1); G.placeAgent(a, cop.x - fx * back, cop.z - fz * back);
+    a.person.group.rotation.y = ry; a.person.group.rotation.x = 0;
+    if (moving) a.person.api.walk(dt, 2.2); else a.person.api.idle(dt);
+    const J = a.person.api.joints; if (J && J.armL && J.armR) { J.armL.rotation.x = 0.55; J.armR.rotation.x = 0.55; } // manos atrás
+  });
+}
+function dropPrisoners(cop) {
+  for (const a of cop.pris) {
+    if (a.kind === "mafia") { if (a.person) G.releasePerson(a.person); a.person = null; a.state = "gone"; }
+    else if (alive(a)) { if (a.cmb) a.cmb.cop = null; G.despawnCustomer(a); }
+  }
+  cop.pris = [];
+}
+const COP_ROAM = [[-6, -3], [6, -3], [-10, 1], [10, 1], [-3, 4], [3, 4], [0, -1], [-12, -3], [12, -3], [0, 5]];
+function updatePolice(dt) {
+  const P = R.pol; if (!P) return;
+  if (S().dayOver) { endPolice(true); return; }
+  P.t += dt;
+  // balizas y sirena
+  const on = Math.floor(performance.now() / 220) % 2 === 0;
+  polMat.red.color.setHex(on ? 0xff2020 : 0x3a0808); polMat.blue.color.setHex(on ? 0x101c40 : 0x2a70ff);
+  P.sirenT -= dt;
+  if (P.sirenT <= 0 && (P.phase === "arrive" || (P.phase === "coming" && P.t > PB.delay - 3))) { P.sirenT = 1.3; G.sfx("alarm", 18, -17); }
+  if (P.phase === "coming") { if (P.t >= PB.delay) startPatrol(); return; }
+  for (const car of P.cars) {
+    car.t += dt;
+    if (car.state === "in") { const u = clamp((car.t - car.delay) / 3.4, 0, 1), e = 1 - Math.pow(1 - u, 2.2); car.g.position.x = car.x0 + (car.x1 - car.x0) * e; }
+    else if (car.state === "out") { const e = clamp((car.t - car.delay) / 3.4, 0, 1); car.g.position.x = car.x1 - e * e * 70; }
+  }
+  if (P.entered) P.st += dt;
+  const over = P.st > PB.sweepMax;
+  P.scareT -= dt; const doScare = P.scareT <= 0 && P.entered; if (doScare) P.scareT = 1;
+  for (const cop of P.cops) {
+    const p = cop.person; if (!p || cop.state === "gone") continue;
+    cop.t += dt;
+    switch (cop.state) {
+      case "wait":
+        if (P.t > 3.4 + cop.car * 0.4) { cop.state = "enter"; p.group.visible = true; G.goTo(cop, G.DOOR.x + (cop.car ? 0.5 : -0.5), -11); }
+        break;
+      case "enter":
+        if (G.stepAgent(cop, dt, PB.runSpeed) || cop.t > 9) {
+          cop.state = "hunt"; cop.t = 0;
+          if (!P.entered) { P.entered = true; P.wantPlayer = wanted(); banner("¡POLICÍA!", "¡Todos quietos! Se llevan a cualquiera que tengan adelante.", 3.5); scare(G.DOOR.x, G.DOOR.z + 4, 9, PB.scareChance); }
+        }
+        break;
+      case "hunt": {
+        if (doScare) scare(cop.x, cop.z, PB.scareR, PB.scareChance * 0.4);
+        cop.re -= dt;
+        if (cop.re <= 0) { cop.re = 0.45; cop.tgt = pickTarget(P, cop); if (cop.tgt) G.goTo(cop, cop.tgt.obj.x, cop.tgt.obj.z); }
+        const t = cop.tgt;
+        if (t) {
+          const stillOn = t.kind === "player" ? !R.jail : t.kind === "mafia" ? !!t.obj.person && t.obj.state !== "cuffed" : t.kind === "staff" ? !!(t.obj.cmb && t.obj.cmb.mode === "fight") : alive(t.obj) && !(t.obj.cmb && t.obj.cmb.mode === "cuffed");
+          if (!stillOn) { cop.tgt = null; cop.re = 0; break; }
+          G.stepAgent(cop, dt, PB.runSpeed);
+          if (dist(cop.x, cop.z, t.obj.x, t.obj.z) < PB.grab) { cop.tgt = null; arrest(cop, t); if (cop.pris.length) { cop.state = "escort"; cop.t = 0; G.goTo(cop, G.DOOR.x, -11.5); } break; }
+        } else if (over || (P.st > PB.sweepMin)) { cop.state = "exit"; G.goTo(cop, P.cars[cop.car].x1 - 1, -16.4); break; }
+        else { // patrulla el salón
+          cop.roamT -= dt;
+          if (cop.roamT <= 0 || G.stepAgent(cop, dt, PB.walkSpeed)) { cop.roamT = rnd(3, 5); const r = pick(COP_ROAM); G.goTo(cop, r[0] + rnd(-1, 1), r[1] + rnd(-1, 1)); }
+        }
+        if (over && !t) { cop.state = "exit"; G.goTo(cop, P.cars[cop.car].x1 - 1, -16.4); break; }
+        bump(P, cop);
+        break;
+      }
+      case "escort": {
+        const moving = !G.stepAgent(cop, dt, PB.walkSpeed);
+        dragPrisoners(cop, dt, moving);
+        if (!moving || cop.t > 30) { dropPrisoners(cop); cop.t = 0; if (over) { cop.state = "exit"; G.goTo(cop, P.cars[cop.car].x1 - 1, -16.4); } else { cop.state = "hunt"; cop.re = 0; } }
+        break;
+      }
+      case "exit":
+        if (G.stepAgent(cop, dt, PB.walkSpeed) || cop.t > 20) { p.group.visible = false; cop.state = "gone"; }
+        break;
+    }
+  }
+  if (P.phase === "arrive" && P.cops.every(c => c.state === "gone")) {
+    P.phase = "leave"; P.lt = 0;
+    for (const car of P.cars) { car.state = "out"; car.t = 0; car.delay = P.cars.indexOf(car) * 0.5; }
+    R.riot = Math.min(R.riot, RB.max * 0.3);
+  }
+  if (P.phase === "leave") { P.lt += dt; if (P.lt > 4.5) endPolice(false); }
+}
+// "no le importa a quién se lleva por delante": cualquiera que se le cruce de frente, vos incluido
+function bump(P, cop) {
+  if (cop.pris.length >= 2) return;
+  if (!R.jail && dist(cop.x, cop.z, player.x, player.z) < PB.bump && ahead(cop, player.x, player.z)) { arrestPlayer(cop); return; }
+  for (const c of G.customers) {
+    if (!alive(c) || c.z < -10.2 || c.state === "leave" || c.state === "flee" || c.state === "caught" || (c.cmb && c.cmb.mode === "cuffed")) continue;
+    if (dist(cop.x, cop.z, c.x, c.z) < PB.bump && ahead(cop, c.x, c.z)) {
+      arrest(cop, { kind: "customer", obj: c });
+      if (cop.pris.length >= 2) { cop.tgt = null; cop.state = "escort"; cop.t = 0; G.goTo(cop, G.DOOR.x, -11.5); }
+      return;
+    }
+  }
+}
+function endPolice(silent) {
+  const P = R.pol; if (!P) return; R.pol = null;
+  for (const cop of P.cops) { dropPrisoners(cop); if (cop.person) G.releasePerson(cop.person); cop.person = null; }
+  for (const car of P.cars) scene.remove(car.g);
+  R.riot = 0; R.blame = { player: 0, clientes: 0, mafia: 0 }; R.riotCool = PB.cooldown;
+  if (silent) return;
+  G.toast(P.arrests ? `La policía se fue y se llevó ${P.arrests} detenido${P.arrests > 1 ? "s" : ""}. El salón quedó tranquilo.` : "La policía recorrió el salón y se fue.", P.arrests ? "bad" : undefined);
+  G.save(false);
+}
+
+// =====================================================================
 // TIENDA (pestaña "Armas" de la compu) Y EQUIPAR
 // =====================================================================
 function shopHtml() {
@@ -667,13 +1023,13 @@ function shopHtml() {
     const locked = s.rank < w.rank, own = c.own[w.id], isEq = c.eq === w.id;
     const btn = own ? `<button class="ghost" data-cact="eq" data-id="${w.id}">${isEq ? "Guardar" : "Equipar"}</button>` : `<button data-cact="buy" data-id="${w.id}" ${locked || s.bank < w.price ? "disabled" : ""}>Comprar</button>`;
     return `<div class="item${locked ? " locked" : ""}"><span class="sw" style="background:${w.kind === "ranged" ? "#4d5560" : "#b07a46"}"></span>
-      <div class="t"><b>${esc(w.name)} · <span class="num">${fmt(w.price)}</span>${locked ? `<span class="tag lock">Rango ${w.rank}</span>` : ""}${own ? `<span class="tag">Tuya${isEq ? " · en mano" : ""}</span>` : ""}</b>
-      <span>${esc(w.desc)} ${w.kind === "melee" ? "Arma blanca" : "Arma de fuego"} · daño ${w.dmg}.</span></div><div class="btns">${btn}</div></div>`;
+      <div class="t"><b>${esc(w.name)} · <span class="num">${w.free ? "Gratis" : fmt(w.price)}</span>${locked ? `<span class="tag lock">Rango ${w.rank}</span>` : ""}${own ? `<span class="tag">Tuya${isEq ? " · en mano" : ""}</span>` : ""}</b>
+      <span>${esc(w.desc)} ${w.free ? "Mano limpia" : w.kind === "melee" ? "Arma blanca" : "Arma de fuego"} · daño ${w.dmg}.</span></div><div class="btns">${btn}</div></div>`;
   }).join("");
   const gun = c.own.pistol, full = c.ammo >= CB.ammo.max;
   const ammo = `<div class="item${gun ? "" : " locked"}"><span class="sw" style="background:#d9a84a"></span><div class="t"><b>Caja de municiones · <span class="num">${fmt(CB.ammo.price)}</span></b><span>+${CB.ammo.amount} balas para la pistola. Tenés ${c.ammo}/${CB.ammo.max}.</span></div>
       <div class="btns"><button data-cact="ammo" ${!gun || full || s.bank < CB.ammo.price ? "disabled" : ""}>Comprar</button></div></div>`;
-  return `<p>Banco <b class="num">${fmt(s.bank)}</b> · equipás con <kbd>${CB.keyLabel}</kbd> y atacás con el clic izquierdo. Pegarle a una máquina la rompe y a un cliente lo enoja de verdad: puede noquearte. Un disparo a un cliente deja sangre que cuesta ${fmt(CB.blood.cleanCost)} limpiar. Y ni se te ocurra tocar a Don Aurelio.</p>
+  return `<p>Banco <b class="num">${fmt(s.bank)}</b> · equipás con <kbd>${CB.keyLabel}</kbd> y atacás con el clic izquierdo. Pegarle a una máquina la rompe y a un cliente lo enoja de verdad: puede noquearte. Un disparo a un cliente deja sangre que cuesta ${fmt(CB.blood.cleanCost)} limpiar. Y ni se te ocurra tocar a Don Aurelio. Ojo: si se arma mucho escándalo cae la policía y se lleva a cualquiera, vos incluido.</p>
     <div class="list">${rows}${ammo}</div>`;
 }
 function buy(id) {
@@ -701,7 +1057,7 @@ function cycle() {
 }
 window.addEventListener("keydown", e => {
   if (e.code !== CB.key || e.repeat || !G.started || !sync()) return;
-  if (G.ui.panel || R.ko || (window.CasinoBuild && window.CasinoBuild.active)) return;
+  if (G.ui.panel || R.ko || R.jail || (window.CasinoBuild && window.CasinoBuild.active)) return;
   cycle();
 });
 document.getElementById("panelBody").addEventListener("click", e => {
@@ -718,10 +1074,11 @@ function update(dt) {
   if (!sync()) return;
   const c = C();
   if (R.cd > 0) R.cd -= dt;
-  R.hurtT += dt;
+  R.hurtT += dt; R.clock += dt;
   if (!R.ko && R.hp < CB.player.hp && R.hurtT > CB.player.regenDelay) R.hp = Math.min(CB.player.hp, R.hp + CB.player.regenPerSec * dt);
-  updateKO(dt); updateResponder(dt);
+  updateKO(dt); updateResponder(dt); updateStaffFights(dt);
   checkMafia(); updateMafia(dt); updateMafiaStaff(dt);
+  decayRiot(dt); updatePolice(dt); updateJail(dt);
   // limpieza especial en curso
   for (const st of R.stains.slice()) if (st.cl) { st.t += dt; if (st.t >= CB.blood.cleanSec) { G.floatText(st.x, 1.3, st.z, "¡Alfombra impecable!", "#9fd0ff"); G.sfx("repair", st.x, st.z); dropStain(st, false); } }
   void c;
@@ -735,7 +1092,13 @@ function frame(dt) {
   if (w && vm.visible) {
     const rest = REST[w.id], m = models[w.id];
     let px = rest.p[0], py = rest.p[1], pz = rest.p[2], rx = rest.r[0], ry = rest.r[1], rz = rest.r[2];
-    if (R.swing) {
+    if (w.id === "fists") { // piña: sale una mano para adelante (alterna izquierda / derecha)
+      const u = R.swing ? clamp((R.swing.t += dt) / R.swing.dur, 0, 1) : 1, k = Math.sin(Math.PI * Math.min(1, u * 1.4));
+      const fl = m.userData.l, fr = m.userData.r, f = R.jab ? fr : fl, o = R.jab ? fl : fr;
+      f.position.set((R.jab ? 0.16 : -0.16) * (1 - k * 0.55), k * 0.08, -k * 0.34); f.rotation.x = -k * 0.2;
+      o.position.set(R.jab ? -0.16 : 0.16, -0.02, 0.04); o.rotation.x = 0;
+      if (u >= 1) R.swing = null;
+    } else if (R.swing) {
       const s = R.swing; s.t += dt; const u = clamp(s.t / s.dur, 0, 1);
       if (s.shot) { const k = 1 - u; pz += 0.07 * k; rx += 0.28 * k; if (models.pistol.userData.flash) models.pistol.userData.flash.visible = u < 0.35; }
       else {
@@ -764,7 +1127,9 @@ function frame(dt) {
   R.flashRed *= Math.pow(0.08, dt); if (R.flashRed < 0.01) R.flashRed = 0;
   redEl.style.opacity = String(clamp(R.flashRed + (R.hp < CB.player.hp * 0.3 && !R.ko ? 0.25 : 0), 0, 1).toFixed(2));
   showKo(R.koK * 0.95);
-  updateHud();
+  R.jailK = (R.jailK || 0) + ((R.jail ? 1 : 0) - (R.jailK || 0)) * Math.min(1, dt * (R.jail ? 3 : 1.5)); if (R.jailK < 0.01 && !R.jail) R.jailK = 0;
+  showJail(R.jailK);
+  updateHud(); updateRiotHud();
 }
 
 // =====================================================================
@@ -772,9 +1137,11 @@ function frame(dt) {
 // =====================================================================
 window.CasinoCombat = {
   click, ko, actor, update, frame, shopHtml, atrPenalty, repairMul, onRepair, onDespawn,
-  get hp() { return R.hp; },
+  disturb: (n, src) => { if (sync()) disturb(n, src); }, // life.js: peleas entre clientes
+  get hp() { return R.hp; }, get riot() { return R.riot; }, get police() { return !!R.pol; }, get jailed() { return !!R.jail; },
   debug: {
-    get state() { sync(); return C(); }, get run() { return R; }, get stains() { return R.stains; }, get mafia() { return R.mf; }, get responder() { return R.resp; },
+    get state() { sync(); return C(); }, get run() { return R; }, get stains() { return R.stains; }, get mafia() { return R.mf; }, get responder() { return R.resp; }, get pol() { return R.pol; },
+    callPolice, endPolice, arrestPlayer, violence, hitStaff, punch,
     buy, buyAmmo, equip, cycle, aim, attack, startKO, startMafia, wake, hurtPlayer, addBlood, cleanStain, hitAurelio, shootCustomer, hitCustomer, hitMachine, killStaff,
     sanitize: clean,
   },
