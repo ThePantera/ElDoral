@@ -192,7 +192,8 @@ function applySky(real) {
   // vereda y calle mojadas: menos rugosas y más oscuras (brillan con la luz de la fachada)
   const target = rainNow > 0 ? 1 : 0; wet += (target - wet) * Math.min(1, real * 0.7);
   if (G.M) {
-    if (!wetBase) wetBase = { road: G.M.road.color.getHex(), walk: G.M.walk.color.getHex(), grass: G.M.grass.color.getHex() };
+    // exterior.js les pone textura y color blanco al cargar: si cambió la textura, se vuelve a tomar el color base
+    if (!wetBase || wetBase.map !== G.M.walk.map) wetBase = { road: G.M.road.color.getHex(), walk: G.M.walk.color.getHex(), grass: G.M.grass.color.getHex(), map: G.M.walk.map };
     G.M.road.roughness = 1 - wet * 0.68; G.M.walk.roughness = 0.95 - wet * 0.6; G.M.road.metalness = wet * 0.35; G.M.walk.metalness = wet * 0.25;
     G.M.road.color.setHex(wetBase.road).multiplyScalar(1 - wet * 0.35); G.M.walk.color.setHex(wetBase.walk).multiplyScalar(1 - wet * 0.4); G.M.grass.color.setHex(wetBase.grass).multiplyScalar(1 - wet * 0.3);
   }
