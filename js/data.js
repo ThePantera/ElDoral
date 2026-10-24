@@ -95,10 +95,10 @@
   //  rank: rango necesario. tier: qué clientes la buscan.
   // ---------------------------------------------------------------
   const MACHINES = [
-    { id: "clasica",  name: "Tragamonedas Clásica",  desc: "Barata y confiable. El pan de cada día.",       color: 0xc8323a, css: "#c8323a", price: 900,   bet: 25,  rtp: 0.90, win: 0.40, spin: 2.5, appeal: 1.0, brk: 0.008, repair: 60,   cap: 200,  rank: 1 },
-    { id: "dorada",   name: "Tragamonedas Dorada",   desc: "Apuestas medianas, la favorita de los habitués.", color: 0xd9a84a, css: "#d9a84a", price: 3000,  bet: 75,  rtp: 0.90, win: 0.35, spin: 3.0, appeal: 1.4, brk: 0.012, repair: 180,  cap: 500,  rank: 2 },
-    { id: "diamante", name: "Tragamonedas Diamante", desc: "Para apostadores grandes. Se rompe seguido.",     color: 0x4fc7e6, css: "#4fc7e6", price: 8000,  bet: 200, rtp: 0.90, win: 0.30, spin: 3.5, appeal: 2.0, brk: 0.018, repair: 450,  cap: 1200, rank: 4 },
-    { id: "jackpot",  name: "Mega Jackpot",          desc: "Pozo progresivo con luces. Imán de VIPs.",        color: 0x9b59d6, css: "#9b59d6", price: 22000, bet: 500, rtp: 0.90, win: 0.12, spin: 4.5, appeal: 3.2, brk: 0.015, repair: 1200, cap: 3000, rank: 6, jackpotSeed: 5000, jackpotShare: 0.02, jackpotOdds: 1 / 1500 },
+    { id: "clasica",  name: "Tragamonedas Clásica",  desc: "Barata y confiable. El pan de cada día.",       color: 0x8c1c26, css: "#c8323a", price: 900,   bet: 25,  rtp: 0.90, win: 0.40, spin: 2.5, appeal: 1.0, brk: 0.008, repair: 60,   cap: 200,  rank: 1 },
+    { id: "dorada",   name: "Tragamonedas Dorada",   desc: "Apuestas medianas, la favorita de los habitués.", color: 0xb48c40, css: "#d9a84a", price: 3000,  bet: 75,  rtp: 0.90, win: 0.35, spin: 3.0, appeal: 1.4, brk: 0.012, repair: 180,  cap: 500,  rank: 2 },
+    { id: "diamante", name: "Tragamonedas Diamante", desc: "Para apostadores grandes. Se rompe seguido.",     color: 0x1d6c84, css: "#4fc7e6", price: 8000,  bet: 200, rtp: 0.90, win: 0.30, spin: 3.5, appeal: 2.0, brk: 0.018, repair: 450,  cap: 1200, rank: 4 },
+    { id: "jackpot",  name: "Mega Jackpot",          desc: "Pozo progresivo con luces. Imán de VIPs.",        color: 0x542680, css: "#9b59d6", price: 22000, bet: 500, rtp: 0.90, win: 0.12, spin: 4.5, appeal: 3.2, brk: 0.015, repair: 1200, cap: 3000, rank: 6, jackpotSeed: 5000, jackpotShare: 0.02, jackpotOdds: 1 / 1500 },
   ];
 
   // ajuste de pago (RTP) que el jugador elige por máquina. Bajo el mínimo legal = trucha = calor.

@@ -149,6 +149,7 @@ const WX_LOOK = { // mezcla hacia gris, multiplicador de sol, niebla cerca/lejos
 const cA = new T.Color(), cB = new T.Color(), cSky = new T.Color(), cSun = new T.Color(), cGrey = new T.Color(), cFlash = new T.Color(0xdfe6ff);
 const sky = { hour: 8, phase: "", bg: 0, sun: 0, sunI: 0, hemiI: 0, facadeK: 1, fogNear: 32, fogFar: 75 };
 let facadeBase = null, flash = 0, flash2 = 0, rainNow = 0, wet = 0;
+const FOG_IN = { color: 0x1c0e09, near: 13, far: 52 }, cFogIn = new T.Color(FOG_IN.color); let inFog = 0; // niebla de adentro
 function phaseOf(h) { return h < 9.5 ? "Amanecer" : h < 16.5 ? "Día" : h < 19.6 ? "Atardecer" : "Noche"; }
 function computeSky(h, wxId) {
   let i = 0; while (i < KF.length - 2 && h >= KF[i + 1][0]) i++;
@@ -170,9 +171,12 @@ function applySky(real) {
   const f = Math.max(flash, flash2 * 0.7);
   if (f > 0) cSky.lerp(cFlash, f * 0.75);
   if (!sc.background || !sc.background.isColor) sc.background = new T.Color();
-  sc.background.copy(cSky);
-  if (sc.fog) { sc.fog.color.copy(cSky).multiplyScalar(0.92); sc.fog.near = sk.fogNear; sc.fog.far = sk.fogFar; }
-  sky.bg = sc.background.getHex();
+  sc.background.copy(cSky).convertLinearToSRGB(); // el fondo se pinta tal cual (sin pasar por la salida sRGB del renderer)
+  // adentro del local la niebla es cálida y oscura (paso 1: el fondo del salón se pierde en penumbra, no en cielo)
+  const pl = G.player, inside = !!pl && Math.abs(pl.x) < 22 && pl.z > -10 && pl.z < 10;
+  inFog += ((inside ? 1 : 0) - inFog) * Math.min(1, (real || 0) * 2.5);
+  if (sc.fog) { sc.fog.color.copy(cSky).multiplyScalar(0.92).lerp(cFogIn, inFog); sc.fog.near = sk.fogNear + (FOG_IN.near - sk.fogNear) * inFog; sc.fog.far = sk.fogFar + (FOG_IN.far - sk.fogFar) * inFog; }
+  sky.bg = cSky.getHex();
   if (G.moon) { G.moon.color.copy(cSun); G.moon.intensity = sk.sunI + f * 2.6; sky.sun = G.moon.color.getHex(); }
   // el apagón de life.js baja el resto de las luces: en ese momento no las tocamos
   const out = window.CasinoLife && window.CasinoLife.outage;

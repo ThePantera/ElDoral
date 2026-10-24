@@ -26,11 +26,33 @@
       // quedan como propiedades sueltas: hay código que las cambia (piso mojado en world.js) y no tiene que romperse
       this.roughness = keep.roughness != null ? keep.roughness : 1;
       this.metalness = keep.metalness || 0;
-      if (this.metalness > 0) this.color.multiplyScalar(1 - METAL_DARKEN * this.metalness);
+      if (this.metalness > 0) this.color.multiplyScalar(Math.pow(1 - METAL_DARKEN * this.metalness, 2.2)); // el color está en lineal
     }
     copy(src) { super.copy(src); this.roughness = src.roughness; this.metalness = src.metalness; return this; }
   }
   if (fast) THREE.MeshStandardMaterial = FastMaterial;
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Color "de verdad" (paso 1 del lavado de cara): el renderer sale en sRGB (game.js) y la luz se calcula en lineal.
+  // Three r128 no convierte solo los colores: un 0x8e1f26 escrito en el código se tomaría como lineal y se vería lavado.
+  // Acá hacemos lo que hace Three moderno: todo color que entra en hex o CSS ('#..', 'rgb(..)', nombre, hsl) se pasa de
+  // sRGB a lineal, y getHex/getHexString/getStyle/getHSL devuelven otra vez sRGB (así los ida y vuelta no cambian nada).
+  // setRGB/setScalar/lerp/multiplyScalar trabajan en lineal, como corresponde. Las texturas de canvas son de color: por
+  // defecto se marcan sRGB (las de sombra/alpha son negras, así que no les cambia nada).
+  // ---------------------------------------------------------------------------------------------------------------
+  const C = THREE.Color.prototype, _hex = C.setHex, _style = C.setStyle, _hsl = C.setHSL, _getHSL = C.getHSL;
+  let raw = 0; // > 0 mientras setStyle llama por dentro a setHex/setHSL (para no convertir dos veces)
+  const tmp = new THREE.Color(), cl = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+  C.setHex = function (h) { _hex.call(this, h); return raw ? this : this.convertSRGBToLinear(); };
+  C.setHSL = function (h, s, l) { _hsl.call(this, h, s, l); return raw ? this : this.convertSRGBToLinear(); };
+  C.setStyle = function (st) { raw++; try { _style.call(this, st); } finally { raw--; } return raw ? this : this.convertSRGBToLinear(); };
+  C.getHex = function () { tmp.copy(this).convertLinearToSRGB(); return (Math.round(cl(tmp.r) * 255) << 16) ^ (Math.round(cl(tmp.g) * 255) << 8) ^ Math.round(cl(tmp.b) * 255); };
+  C.getStyle = function () { tmp.copy(this).convertLinearToSRGB(); return "rgb(" + Math.round(cl(tmp.r) * 255) + "," + Math.round(cl(tmp.g) * 255) + "," + Math.round(cl(tmp.b) * 255) + ")"; };
+  C.getHSL = function (target) { return _getHSL.call(tmp.copy(this).convertLinearToSRGB(), target || { h: 0, s: 0, l: 0 }); };
+  class SRGBCanvasTexture extends THREE.CanvasTexture {
+    constructor(...a) { super(...a); this.encoding = THREE.sRGBEncoding; }
+  }
+  THREE.CanvasTexture = SRGBCanvasTexture;
 
   // segmentos para una medida (paredes, pisos): 1 en "Alta", uno cada TESS_STEP metros con materiales rápidos
   function segs(len) { return fast ? Math.min(TESS_MAX, Math.max(1, Math.ceil(len / TESS_STEP))) : 1; }
