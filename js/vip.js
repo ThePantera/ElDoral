@@ -356,7 +356,7 @@ function dance(p, real) {
   p.group.position.set(POLE.x + Math.cos(a) * 0.42, STAGE_H, POLE.z + Math.sin(a) * 0.42);
   p.group.rotation.y = Math.atan2(POLE.x - p.group.position.x, POLE.z - p.group.position.z) - 1.25; // de costado al caño
   p.api.idle(real);
-  J.hips.position.y = 0.92 - 0.05 * (1 + w); J.hips.rotation.y = w * 0.35; J.hips.rotation.z = w2 * 0.06;
+  J.hips.position.y = (p.api.hipY || 0.92) - 0.05 * (1 + w); J.hips.rotation.y = w * 0.35; J.hips.rotation.z = w2 * 0.06;
   J.legL.rotation.x = -0.1 * (1 + w); J.legR.rotation.x = -0.1 * (1 - w); J.kneeL.rotation.x = 0.2 * (1 + w); J.kneeR.rotation.x = 0.2 * (1 - w);
   J.torso.rotation.z = -w * 0.1; J.torso.rotation.y = -w * 0.2;
   J.armR.rotation.z = 2.55; J.armR.rotation.x = -0.3; J.elbowR.rotation.x = -0.25;           // una mano en el caño
