@@ -1,5 +1,18 @@
 # Casino Dorado · v2 — Cambios
 
+## Lavado de cara, paso 2: objetos redondeados
+
+- **Chau bloques:** los muebles del salón ya no parecen armados con cajas. Todas las piezas tienen los cantos redondeados de verdad (un cuarto de caño en cada arista), con la luz que se desliza suave por el borde en vez de marcar cada cara. Lo plano sigue plano.
+- **Tragamonedas:** gabinetes con cantos blandos, molduras de bronce al pie y bajo la repisa, botones redondeados con aro cromado, palanca con pomo liso, copetes más redondos (arco, abanico, aro del Jackpot) y columnas torneadas en la Dorada. Mismos colores, medidas y frente.
+- **Banquitos:** pie de bronce torneado, caño, apoyapié, copa bajo el asiento y almohadón de cuero acolchado (domo) con costura dorada. Se usan en máquinas, mesas y barra; la gente se sienta a la misma altura.
+- **Mesas:** blackjack con baranda de cuero más gorda y lisa, pie torneado y filetes dorados en el faldón; póker con tapa de canto redondeado, pedestales torneados con anillo de bronce y baranda acolchada; ruleta con cilindro más fino, torreta torneada y molduras doradas; dados con baranda de cuero bien redonda; bingo con sillas tapizadas acolchadas y patas redondas; carreras con mueble y pantalla de cantos suaves.
+- **Barra y caja:** botellas torneadas (cuerpo, hombro y cuello), vasos de verdad, canilla con pomo, apoyapiés con remates redondos, media caña bajo la tapa; la jaula de la caja con pomitos en los barrotes y la caja fuerte con dial y manija redondeados.
+- **Decoración:** maceta torneada con borde enrollado, lámpara de pie con base torneada y filetes dorados en la pantalla, estatua con pedestal de zócalo y cornisa y figura torneada, fuente con pileta de borde enrollado, columna y tazón torneados; farol, columna de mármol, cuadros y neones nuevos también. Arañas, pilastras y la soga de terciopelo, más redondas.
+- **Tienda y oficina:** heladera, góndola de snacks, caja registradora, escritorio, silla, ropero, acuario, caja fuerte de la oficina, cámaras y tablero de alarma con cantos redondeados; latas, botellas y paquetes con forma.
+- **Rendimiento:** mismas llamadas de dibujo por objeto (las piezas siguen fundidas por material y cacheadas) y la decoración de mármol y bronce ahora se funde en menos mallas. Hay unas 3 veces más triángulos, pero la geometría fundida pasó a ser **indexada** (cada vértice se ilumina una vez): cada máquina tiene ~8.200 vértices contra ~9.000 antes, y lo mismo en mesas, barra y caja. Sin luces nuevas (siguen 8).
+- Medición (Playwright + SwiftShader, salón lleno: 12 máquinas, blackjack, ruleta, barra y 4 decoraciones; `render` + `readPixels`, versión vieja y nueva en el mismo navegador con tandas intercaladas; mediana en ms por cuadro). Gráficos media: salón 721 → 712, máquinas de cerca 722 → 675, mesa 777 → 737. Gráficos Alta: salón 1684 → 1751 (+4 %), máquinas 1633 → 1578, mesa 1665 → 1690 (+1,5 %), dentro del ruido. Llamadas de dibujo del salón ~224 en las dos versiones.
+- No toca la economía, el balance ni el guardado: las partidas viejas cargan igual. La fachada y la calle no se tocaron.
+
 ## Lavado de cara, paso 1: color y luz
 
 - **Colores de verdad:** la imagen ahora sale con el manejo de color correcto (sRGB). Antes los colores se veían lavados y la luz pareja, como de juguete; ahora las sombras son más profundas y los brillos (máquinas, carteles, neones) resaltan más que el resto.

@@ -1028,33 +1028,60 @@ const rugTex = A.canvasTex(256, 160, (g, w, h) => {
   g.lineWidth = 2; g.strokeRect(22, 22, w - 44, h - 44);
   g.fillStyle = "rgba(217,168,74,.5)"; g.beginPath(); g.ellipse(w / 2, h / 2, 40, 26, 0, 0, Math.PI * 2); g.fill();
 });
+// paso 2: piezas torneadas fundidas por material (una malla de bronce y una de mármol por objeto, geometría compartida)
+const DECO_GEO = {};
+function decoGeo(key, build) {
+  if (DECO_GEO[key]) return DECO_GEO[key];
+  const L = [], M = (x, y, z, rx, ry, rz) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx || 0, ry || 0, rz || 0)), new THREE.Vector3(1, 1, 1));
+  build((geo, x, y, z, rx, ry, rz) => L.push({ geo, m: M(x, y, z, rx, ry, rz) }));
+  return (DECO_GEO[key] = A.mergeGeometries(L));
+}
+const lathe = (k, pts, seg) => A.latheGeometry("deco|" + k, pts, seg);
 function makeDecor(id) {
   const g = new THREE.Group(), brass = A.materials.brass, marble = A.materials.marble;
   if (id === "deco_planta") g.add(A.makePlant({ kind: "palm", scale: 1.15 }));
   else if (id === "deco_lampara") {
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.06, 16), brass); base.position.y = 0.03; g.add(base);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.6, 8), brass); pole.position.y = 0.85; g.add(pole);
-    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 0.36, 16, 1, true), A.basic(0xffd27a)); shade.position.y = 1.72; g.add(shade);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), brass); cap.position.y = 1.93; g.add(cap);
+    g.add(new THREE.Mesh(decoGeo("lampBrass", add => {
+      add(lathe("lampbase", [[0, 0], [0.24, 0], [0.246, 0.012], [0.232, 0.032], [0.17, 0.05], [0.07, 0.066], [0.036, 0.095], [0, 0.095]], 24), 0, 0, 0);
+      add(new THREE.CylinderGeometry(0.022, 0.024, 1.5, 12, 1, true), 0, 0.84, 0);
+      add(new THREE.TorusGeometry(0.03, 0.01, 6, 14), 0, 0.6, 0, Math.PI / 2);
+      add(lathe("lamptop", [[0, 0], [0.03, 0], [0.045, 0.03], [0.03, 0.06], [0.02, 0.1], [0, 0.1]], 14), 0, 1.53, 0);
+      add(new THREE.TorusGeometry(0.32, 0.012, 6, 32), 0, 1.54, 0, Math.PI / 2);   // filetes dorados de la pantalla
+      add(new THREE.TorusGeometry(0.18, 0.01, 6, 24), 0, 1.9, 0, Math.PI / 2);
+      add(new THREE.SphereGeometry(0.05, 16, 12), 0, 1.95, 0);
+    }), brass));
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 0.36, 28, 1, true), A.basic(0xffd27a)); shade.position.y = 1.72; g.add(shade);
     A.addBlob(g, 0.6, 0.6);
   } else if (id === "deco_alfombra") {
     const r = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.2), new THREE.MeshStandardMaterial({ map: rugTex, roughness: 0.95 }));
     r.rotation.x = -Math.PI / 2; r.position.y = 0.012; g.add(r);
     const post = A.makeVelvetRope({ length: 1.6, posts: 2 }); post.position.z = -0.75; g.add(post);
   } else if (id === "deco_estatua") {
-    const ped = new THREE.Mesh(A.roundedBox(0.6, 0.9, 0.6, 0.04), marble); ped.position.y = 0.45; g.add(ped);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.19, 0.75, 10), brass); body.position.y = 1.3; g.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), brass); head.position.y = 1.8; g.add(head);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.55, 8), brass); arm.position.set(0.2, 1.75, 0); arm.rotation.z = -0.5; g.add(arm);
-    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.025, 16), brass); coin.position.set(0.36, 2.03, 0); coin.rotation.x = Math.PI / 2; g.add(coin);
+    g.add(new THREE.Mesh(decoGeo("statueMarble", add => { // pedestal con zócalo y cornisa
+      add(A.roundedBox(0.66, 0.1, 0.66, 0.03), 0, 0.05, 0); add(A.roundedBox(0.56, 0.7, 0.56, 0.035, 2), 0, 0.45, 0); add(A.roundedBox(0.64, 0.09, 0.64, 0.035), 0, 0.845, 0);
+    }), marble));
+    g.add(new THREE.Mesh(decoGeo("statueBrass", add => {
+      add(A.roundedBox(0.6, 0.025, 0.6, 0.01), 0, 0.11, 0); add(A.roundedBox(0.6, 0.025, 0.6, 0.01), 0, 0.79, 0); // molduras doradas
+      add(lathe("figura", [[0, 0.89], [0.17, 0.89], [0.185, 0.905], [0.17, 0.93], [0.14, 0.96], [0.12, 1.02], [0.13, 1.15], [0.16, 1.32], [0.185, 1.47], [0.17, 1.58], [0.12, 1.64], [0.065, 1.67], [0.055, 1.7], [0, 1.7]], 22), 0, 0, 0);
+      add(new THREE.SphereGeometry(0.12, 18, 14), 0, 1.8, 0);
+      add(new THREE.CylinderGeometry(0.035, 0.03, 0.55, 12), 0.2, 1.75, 0, 0, 0, -0.5);
+      add(new THREE.SphereGeometry(0.042, 12, 9), 0.33, 1.98, 0);
+    }), brass));
+    const coin = new THREE.Mesh(A.roundedCylinder(0.12, 0.12, 0.025, 28, 0.008), brass); coin.position.set(0.36, 2.03, 0); coin.rotation.x = Math.PI / 2; g.add(coin);
     g.userData.spin = coin;
     A.addBlob(g, 0.9, 0.9);
   } else if (id === "deco_fuente") {
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.66, 0.42, 24), marble); basin.position.y = 0.21; g.add(basin);
-    const water = new THREE.Mesh(new THREE.CircleGeometry(0.56, 24), A.std(0x2f86b8, 0.1, 0.2, 0x0a2a40)); water.rotation.x = -Math.PI / 2; water.position.y = 0.4; g.add(water);
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.9, 10), marble); col.position.y = 0.8; g.add(col);
-    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.12, 0.14, 16), brass); bowl.position.y = 1.25; g.add(bowl);
-    const jet = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.35, 8), new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.6 })); jet.position.y = 1.5; g.add(jet);
+    g.add(new THREE.Mesh(decoGeo("fountainMarble", add => {
+      // pileta con borde enrollado (el agua queda a 0.4 m) y columna torneada
+      add(lathe("pileta", [[0, 0], [0.66, 0], [0.672, 0.015], [0.655, 0.05], [0.635, 0.1], [0.635, 0.34], [0.66, 0.37], [0.68, 0.4], [0.672, 0.43], [0.645, 0.442], [0.615, 0.43], [0.6, 0.4], [0.598, 0.37], [0, 0.37]], 40), 0, 0, 0);
+      add(lathe("columna", [[0.15, 0], [0.13, 0.04], [0.1, 0.07], [0.08, 0.12], [0.07, 0.4], [0.068, 0.62], [0.085, 0.68], [0.11, 0.72], [0.06, 0.78], [0, 0.78]], 20), 0, 0.37, 0);
+    }), marble));
+    g.add(new THREE.Mesh(decoGeo("fountainBrass", add => {
+      add(lathe("tazon", [[0, 0], [0.06, 0], [0.12, 0.02], [0.24, 0.09], [0.305, 0.13], [0.31, 0.15], [0.29, 0.152], [0.22, 0.12], [0, 0.11]], 32), 0, 1.15, 0);
+      add(new THREE.TorusGeometry(0.66, 0.014, 6, 48), 0, 0.33, 0, Math.PI / 2); // filete dorado de la pileta
+    }), brass));
+    const water = new THREE.Mesh(new THREE.CircleGeometry(0.6, 40), A.std(0x2f86b8, 0.1, 0.2, 0x0a2a40)); water.rotation.x = -Math.PI / 2; water.position.y = 0.4; g.add(water);
+    const jet = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.35, 16), new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.6 })); jet.position.y = 1.5; g.add(jet);
     g.userData.spin = jet;
     A.addBlob(g, 1.5, 1.5);
   } else if (window.CasinoBuild) g.add(window.CasinoBuild.makeDecor(id)); // v3: decoración nueva (decor.js)

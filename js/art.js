@@ -14,6 +14,8 @@
  *     with methods such as update(dt). Call api.update(dt) once per frame.
  *   - static parts are merged per material (few draw calls) and the merged
  *     geometry is cached, so ten slot machines share one geometry set.
+ *     Paso 2: la geometría fundida es indexada y las piezas son redondeadas
+ *     (sbox, latheG, rcylG): más triángulos pero menos vértices que antes.
  *   - materials/geometries are cached in CasinoArt.cache; never dispose
  *     them per instance.
  *
@@ -103,6 +105,118 @@
       return g;
     });
   }
+  // ------------------------------------------------------------------
+  // paso 2 · objetos redondeados (sin cajas duras): caja blanda, torno y cilindro con canto redondeado.
+  // Todas guardan normales suaves en las curvas y planas en las caras planas, así la luz por vértice
+  // (Lambert, perf.js) hace un brillo suave en cada canto en vez de marcar cada cara.
+  // ------------------------------------------------------------------
+  /**
+   * Caja con cantos redondeados de verdad (cuarto de caño en cada arista, octante de esfera en cada esquina).
+   * seg = segmentos por cada medio arco (1 → canto en 2 tramos, 2 → 4 tramos). UV de 0 a 1 por cara y grupos
+   * en el orden de BoxGeometry (+x, −x, +y, −y, +z, −z), así sirve de reemplazo directo. ~108 tris (seg 1).
+   */
+  function sbox(w, h, d, r, seg) {
+    r = r == null ? 0.03 : r; seg = seg || 1;
+    return cache(_geos, 'sb|' + w + '|' + h + '|' + d + '|' + r + '|' + seg, function () {
+      var H = [w / 2, h / 2, d / 2];
+      r = Math.max(0.0005, Math.min(r, H[0] * 0.98, H[1] * 0.98, H[2] * 0.98));
+      var I = [Math.max(0, H[0] - r), Math.max(0, H[1] - r), Math.max(0, H[2] - r)];
+      function coords(ax) {
+        var pos = [];
+        for (var k = 0; k <= seg; k++) pos.push(I[ax] + r * Math.tan(k / seg * PI / 4));
+        var neg = pos.slice().reverse().map(function (v) { return -v; });
+        return I[ax] < 1e-6 ? neg.concat(pos.slice(1)) : neg.concat(pos);
+      }
+      // [eje normal, signo, eje u, signo u, eje v, signo v] como BoxGeometry
+      var FACES = [[0, 1, 2, -1, 1, 1], [0, -1, 2, 1, 1, 1], [1, 1, 0, 1, 2, -1], [1, -1, 0, 1, 2, 1], [2, 1, 0, 1, 1, 1], [2, -1, 0, -1, 1, 1]];
+      var pos = [], nor = [], uv = [], idx = [], g = new T.BufferGeometry(), p = [0, 0, 0], c = [0, 0, 0];
+      FACES.forEach(function (F, fi) {
+        var n = F[0], s = F[1], ua = F[2], us = F[3], va = F[4], vs = F[5];
+        var cu = coords(ua), cv = coords(va), nu = cu.length, base = pos.length / 3, start = idx.length;
+        for (var j = 0; j < cv.length; j++) for (var i = 0; i < nu; i++) {
+          p[n] = s * H[n]; p[ua] = us * cu[i]; p[va] = vs * cv[j];
+          var dx = 0, dy = 0, dz = 0;
+          for (var a = 0; a < 3; a++) c[a] = Math.max(-I[a], Math.min(I[a], p[a]));
+          dx = p[0] - c[0]; dy = p[1] - c[1]; dz = p[2] - c[2];
+          var L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (L < 1e-9) { dx = n === 0 ? s : 0; dy = n === 1 ? s : 0; dz = n === 2 ? s : 0; L = 1; }
+          dx /= L; dy /= L; dz /= L;
+          pos.push(c[0] + dx * r, c[1] + dy * r, c[2] + dz * r); nor.push(dx, dy, dz);
+          uv.push(cu[i] / H[ua] * 0.5 + 0.5, cv[j] / H[va] * 0.5 + 0.5);
+        }
+        // sentido antihorario visto de afuera: u × v tiene que apuntar como la normal de la cara
+        var eu = [0, 0, 0], ev = [0, 0, 0]; eu[ua] = us; ev[va] = vs;
+        var cr = [eu[1] * ev[2] - eu[2] * ev[1], eu[2] * ev[0] - eu[0] * ev[2], eu[0] * ev[1] - eu[1] * ev[0]];
+        var ccw = cr[n] * s > 0;
+        for (var j2 = 0; j2 < cv.length - 1; j2++) for (var i2 = 0; i2 < nu - 1; i2++) {
+          var A0 = base + j2 * nu + i2, B0 = A0 + 1, C0 = A0 + nu, D0 = C0 + 1;
+          if (ccw) idx.push(A0, B0, D0, A0, D0, C0); else idx.push(A0, D0, B0, A0, C0, D0);
+        }
+        g.addGroup(start, idx.length - start, fi);
+      });
+      g.setIndex(idx);
+      g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+      g.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
+      g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+      g.computeBoundingSphere();
+      return g;
+    });
+  }
+  /**
+   * Torno (perfil que gira alrededor de Y) cacheado por clave. pts: [[radio, y], ...] de abajo hacia arriba.
+   * Normales suaves; para un canto vivo a propósito se repite el punto (ese vértice no se promedia).
+   */
+  function latheG(key, pts, seg) {
+    seg = seg || 20;
+    return cache(_geos, 'lathe|' + key + '|' + seg, function () {
+      var g = new T.LatheGeometry(pts.map(function (q) { return new T.Vector2(Math.max(0.0005, q[0]), q[1]); }), seg);
+      g.computeBoundingSphere(); return g;
+    });
+  }
+  /** Perfil de cilindro con canto redondeado (radio f) abajo y arriba, centrado en y = 0. */
+  function rcylPts(rt, rb, h, f, steps) {
+    steps = steps || 3; f = Math.min(f, rt * 0.9, rb * 0.9, h * 0.45);
+    var out = [[0, -h / 2]], k, a;
+    for (k = 0; k <= steps; k++) { a = -PI / 2 + k / steps * PI / 2; out.push([rb - f + f * Math.cos(a), -h / 2 + f + f * Math.sin(a)]); }
+    for (k = 0; k <= steps; k++) { a = k / steps * PI / 2; out.push([rt - f + f * Math.cos(a), h / 2 - f + f * Math.sin(a)]); }
+    out.push([0, h / 2]);
+    return out;
+  }
+  /** Cilindro (o disco) con cantos redondeados: el reemplazo "blando" de cylG. */
+  function rcylG(rt, rb, h, seg, f) {
+    seg = seg || 20; f = f == null ? Math.min(rt, rb, h) * 0.25 : f;
+    return latheG('rcyl|' + [rt, rb, h, f].join('|'), rcylPts(rt, rb, h, f), seg);
+  }
+  /**
+   * Ablanda una lista de piezas {geo, m, color} armadas con la caja/cilindro/esfera unitarios escalados
+   * (shop.js, owner.js): cada caja pasa a caja redondeada con sus medidas reales (sin escalar el canto) y
+   * cada cilindro/esfera a uno de más lados. Devuelve la misma lista (se modifica en el lugar).
+   */
+  var _sv = new T.Vector3(), _sq = new T.Quaternion(), _ss = new T.Vector3(), _one = new T.Vector3(1, 1, 1);
+  function soften(list, maxR) {
+    maxR = maxR || 0.025;
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i], P = it.geo && it.geo.parameters; if (!P) continue;
+      var t = it.geo.type;
+      if (t === 'BoxGeometry' && P.width === 1 && P.height === 1 && P.depth === 1) {
+        it.m.decompose(_sv, _sq, _ss);
+        var sx = Math.abs(_ss.x), sy = Math.abs(_ss.y), sz = Math.abs(_ss.z), mn = Math.min(sx, sy, sz);
+        var rr = Math.round(Math.min(maxR, mn * 0.3) * 2000) / 2000;
+        if (rr < 0.0015) continue; // láminas finitas: quedan como están
+        it.geo = sbox(+sx.toFixed(4), +sy.toFixed(4), +sz.toFixed(4), rr, Math.max(sx, sy, sz) > 0.6 && rr > 0.012 ? 2 : 1);
+        it.m = new T.Matrix4().compose(_sv, _sq, _one);
+      } else if (t === 'CylinderGeometry' && P.radiusTop === 0.5 && P.radiusBottom === 0.5 && P.height === 1) {
+        it.m.decompose(_sv, _sq, _ss);
+        if (Math.abs(_ss.x - _ss.z) > 1e-4) continue;
+        var rad = Math.abs(_ss.x) / 2, hh = Math.abs(_ss.y);
+        it.geo = rcylG(+rad.toFixed(4), +rad.toFixed(4), +hh.toFixed(4), rad > 0.05 ? 24 : 14, Math.min(0.012, rad * 0.3, hh * 0.3));
+        it.m = new T.Matrix4().compose(_sv, _sq, _one);
+      } else if (t === 'SphereGeometry' && P.radius === 0.5 && P.widthSegments < 16) {
+        it.geo = sphG(0.5, 18, 12);
+      }
+    }
+    return list;
+  }
   function boxG(w, h, d) { return cache(_geos, 'box|' + w + '|' + h + '|' + d, function () { return new T.BoxGeometry(w, h, d); }); }
   function cylG(rt, rb, h, seg, open, ts, tl) {
     seg = seg || 12;
@@ -110,7 +224,10 @@
       return new T.CylinderGeometry(rt, rb, h, seg, 1, !!open, ts || 0, tl || TAU);
     });
   }
-  function sphG(r, ws, hs) { ws = ws || 8; hs = hs || 6; return cache(_geos, 'sph|' + r + '|' + ws + '|' + hs, function () { return new T.SphereGeometry(r, ws, hs); }); }
+  function sphG(r, ws, hs, ps, pl, ts, tl) {
+    ws = ws || 8; hs = hs || 6;
+    return cache(_geos, 'sph|' + [r, ws, hs, ps || 0, pl || TAU, ts || 0, tl || PI].join('|'), function () { return new T.SphereGeometry(r, ws, hs, ps || 0, pl || TAU, ts || 0, tl || PI); });
+  }
   function torG(R, r, rs, ts, arc) { return cache(_geos, 'tor|' + [R, r, rs, ts, arc || TAU].join('|'), function () { return new T.TorusGeometry(R, r, rs, ts, arc || TAU); }); }
   function icoG(r) { return cache(_geos, 'ico|' + r, function () { return new T.IcosahedronGeometry(r, 0); }); }
   /** Ficha de casino: los costados leen la franja de arriba de la textura (rayas), las tapas el dibujo redondo. */
@@ -148,16 +265,22 @@
     return new T.Matrix4().compose(_v, _q, _s);
   }
 
-  /** Merge geometries (each with a Matrix4 and optional colour) into one non-indexed BufferGeometry. */
+  /**
+   * Merge geometries (each with a Matrix4 and optional colour) into one indexed BufferGeometry.
+   * Paso 2: se conservan los índices de cada pieza (antes se desarmaba todo en triángulos sueltos): las piezas
+   * redondeadas comparten vértices y la placa ilumina cada vértice una sola vez (luz por vértice, perf.js).
+   */
   function mergeGeos(list, withColor) {
-    var total = 0, parts = [];
+    var total = 0, totalIdx = 0, parts = [];
     for (var i = 0; i < list.length; i++) {
       var it = list[i];
-      var g = it.geo.index ? it.geo.toNonIndexed() : it.geo.clone();
+      var g = it.geo.clone();
       g.applyMatrix4(it.m);
       parts.push({ g: g, c: it.color, uv: it.uv });
       total += g.attributes.position.count;
+      totalIdx += g.index ? g.index.count : g.attributes.position.count;
     }
+    var idx = total > 65535 ? new Uint32Array(totalIdx) : new Uint16Array(totalIdx), io = 0;
     var pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), uv = new Float32Array(total * 2);
     var col = withColor ? new Float32Array(total * 3) : null, o = 0, tmpC = new T.Color();
     for (var j = 0; j < parts.length; j++) {
@@ -170,9 +293,12 @@
         tmpC.set(parts[j].c == null ? 0xffffff : parts[j].c);
         for (var k = 0; k < n; k++) { col[(o + k) * 3] = tmpC.r; col[(o + k) * 3 + 1] = tmpC.g; col[(o + k) * 3 + 2] = tmpC.b; }
       }
+      if (p.index) { var ia = p.index.array; for (var t = 0; t < ia.length; t++) idx[io++] = ia[t] + o; }
+      else for (var t2 = 0; t2 < n; t2++) idx[io++] = o + t2;
       o += n; p.dispose();
     }
     var out = new T.BufferGeometry();
+    out.setIndex(new T.BufferAttribute(idx, 1));
     out.setAttribute('position', new T.BufferAttribute(pos, 3));
     out.setAttribute('normal', new T.BufferAttribute(nor, 3));
     out.setAttribute('uv', new T.BufferAttribute(uv, 2));
@@ -572,13 +698,28 @@
     get metal() { return cache(_mats, 'vcmetal', function () { return new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.26, metalness: 0.55, emissive: 0x2a1e10 }); }); },
   };
 
+  /**
+   * Banqueta torneada (paso 2): pie de bronce con canto redondeado, caño, apoyapié, copa bajo el asiento y
+   * almohadón de cuero acolchado (domo con costura de bronce). Mismas medidas que la de antes: asiento a h + 0.045.
+   * Devuelve [geo, 'metal'|'seat', y, rotX] para que la usen el kit con colores (máquinas) y el de materiales.
+   */
+  function stoolGeos(h) {
+    return cache(_geos, 'stoolgeos|' + h, function () {
+      var base = latheG('stbase', [[0, 0], [0.2, 0], [0.214, 0.008], [0.216, 0.018], [0.204, 0.028], [0.12, 0.04], [0.055, 0.056], [0.036, 0.078], [0, 0.08]], 18);
+      var cup = latheG('stcup', [[0.03, 0], [0.05, 0.002], [0.115, 0.03], [0.128, 0.04], [0, 0.041]], 18);
+      var seat = latheG('stseat', [[0, 0], [0.165, 0], [0.19, 0.008], [0.203, 0.03], [0.206, 0.055], [0.199, 0.08], [0.18, 0.1], [0.14, 0.113], [0.07, 0.119], [0, 0.12]], 20);
+      return [
+        [base, 'metal', 0, 0], [cylG(0.026, 0.026, h - 0.15, 12, true), 'metal', 0.07 + (h - 0.15) / 2, 0],
+        [torG(0.15, 0.012, 5, 22), 'metal', h * 0.4, PI / 2], [cylG(0.034, 0.034, 0.02, 12), 'metal', h * 0.4, 0],
+        [cup, 'metal', h - 0.12, 0], [seat, 'seat', h - 0.075, 0], [torG(0.197, 0.008, 5, 26), 'metal', h - 0.064, PI / 2],
+      ];
+    });
+  }
   function addStoolTo(k, z, h) {
-    k.add('METAL', cylG(0.2, 0.22, 0.03, 14), PAL.brass, 0, 0.015, z);
-    k.add('METAL', cylG(0.03, 0.03, h - 0.08, 8), PAL.brass, 0, h / 2, z);
-    k.add('METAL', torG(0.15, 0.012, 4, 14), PAL.brass, 0, h * 0.4, z, PI / 2);
-    k.add('PAINT', cylG(0.2, 0.18, 0.09, 14), 0x4e1217, 0, h - 0.03, z);       // tapizado bordó cuero
-    k.add('PAINT', torG(0.19, 0.03, 5, 16), 0x3e0e12, 0, h + 0.01, z, PI / 2);
-    k.add('PAINT', cylG(0.17, 0.17, 0.02, 14), 0x5a161c, 0, h + 0.035, z);
+    stoolGeos(h).forEach(function (q) { k.add(q[1] === 'seat' ? 'PAINT' : 'METAL', q[0], q[1] === 'seat' ? 0x4e1217 : PAL.brass, 0, q[2], z, q[3]); }); // tapizado bordó cuero
+  }
+  function addStoolKit(k, x, z, h) {
+    stoolGeos(h).forEach(function (q) { k.add(q[0], q[1] === 'seat' ? MAT.leatherRed : MAT.brass, x, q[2], z, q[3]); });
   }
   function slotParts(model, color, stool) {
     return cache(_geos, 'slot2|' + model + '|' + color + '|' + (stool ? 1 : 0), function () {
@@ -588,53 +729,57 @@
       function B(x, y, z, r) { k.add('LIGHT', icoG(r || 0.024), bulb, x, y, z, 0, 0, 0, 1, 1, 1, chaseUV(bi++)); }
       function S(geo, col, x, y, z, rx, ry, rz, sx, sy, sz) { k.add('LIGHT', geo, col, x, y, z, rx, ry, rz, sx, sy, sz, STEADY_UV); }
       // --- base común ---
-      k.add('PAINT', rbox(0.9, 0.1, 0.7, 0.02), dark, 0, 0.05, 0);
-      k.add('METAL', rbox(0.92, 0.02, 0.72, 0.008), trim, 0, 0.105, 0);
-      k.add('PAINT', rbox(0.84, 0.86, 0.62, 0.045, 2), C, 0, 0.53, 0);
-      k.add('PAINT', rbox(0.62, 0.58, 0.02, 0.01), blk, 0, 0.5, 0.305);                                   // hueco de la puerta
+      k.add('PAINT', sbox(0.9, 0.1, 0.7, 0.02), dark, 0, 0.05, 0);
+      k.add('METAL', sbox(0.92, 0.02, 0.72, 0.008), trim, 0, 0.105, 0);
+      k.add('PAINT', sbox(0.84, 0.86, 0.62, 0.045, 2), C, 0, 0.53, 0);
+      k.add('PAINT', sbox(0.62, 0.58, 0.02, 0.01), blk, 0, 0.5, 0.305);                                   // hueco de la puerta
       k.add('PAINT', boxG(0.3, 0.12, 0.02), 0x3f8a4a, 0, 0.42, 0.31);                                   // billetes (se ven con la puerta abierta)
-      k.add('METAL', rbox(0.9, 0.05, 0.68, 0.015), trim, 0, 0.975, 0.01);
-      k.add('PAINT', rbox(0.86, 0.06, 0.3, 0.02), blk, 0, 1.03, 0.2, -0.22, 0, 0);                         // repisa
-      k.add('METAL', rbox(0.86, 0.015, 0.02, 0.006), trim, 0, 1.06, 0.345, -0.22, 0, 0);
-      k.add('PAINT', rbox(0.84, 0.82, 0.5, 0.045, 2), C, 0, 1.43, -0.06);
-      k.add('PAINT', rbox(0.74, 0.54, 0.05, 0.02), blk, 0, 1.45, 0.19);                                   // marco de pantalla
-      k.add('METAL', rbox(0.72, 0.03, 0.03, 0.01), trim, 0, 1.73, 0.215); k.add('METAL', rbox(0.72, 0.03, 0.03, 0.01), trim, 0, 1.17, 0.215);
-      k.add('METAL', rbox(0.03, 0.56, 0.03, 0.01), trim, -0.36, 1.45, 0.215); k.add('METAL', rbox(0.03, 0.56, 0.03, 0.01), trim, 0.36, 1.45, 0.215);
-      k.add('METAL', rbox(0.36, 0.08, 0.1, 0.02), chrome, 0, 0.2, 0.33);                                 // bandeja de monedas
-      k.add('PAINT', rbox(0.3, 0.03, 0.06, 0.01), blk, 0, 0.23, 0.35);
-      k.add('PAINT', rbox(0.12, 0.16, 0.04, 0.01), blk, 0.28, 1.13, 0.2, -0.22, 0, 0);                    // billetero
+      k.add('METAL', sbox(0.9, 0.05, 0.68, 0.015), trim, 0, 0.975, 0.01);
+      k.add('PAINT', sbox(0.86, 0.06, 0.3, 0.02), blk, 0, 1.03, 0.2, -0.22, 0, 0);                         // repisa
+      k.add('METAL', sbox(0.86, 0.015, 0.02, 0.006), trim, 0, 1.06, 0.345, -0.22, 0, 0);
+      k.add('PAINT', sbox(0.84, 0.82, 0.5, 0.045, 2), C, 0, 1.43, -0.06);
+      k.add('PAINT', sbox(0.74, 0.54, 0.05, 0.02), blk, 0, 1.45, 0.19);                                   // marco de pantalla
+      k.add('METAL', sbox(0.72, 0.03, 0.03, 0.01), trim, 0, 1.73, 0.215); k.add('METAL', sbox(0.72, 0.03, 0.03, 0.01), trim, 0, 1.17, 0.215);
+      k.add('METAL', sbox(0.03, 0.56, 0.03, 0.01), trim, -0.36, 1.45, 0.215); k.add('METAL', sbox(0.03, 0.56, 0.03, 0.01), trim, 0.36, 1.45, 0.215);
+      k.add('METAL', sbox(0.36, 0.08, 0.1, 0.02), chrome, 0, 0.2, 0.33);                                 // bandeja de monedas
+      k.add('PAINT', sbox(0.3, 0.03, 0.06, 0.01), blk, 0, 0.23, 0.35);
+      k.add('PAINT', sbox(0.12, 0.16, 0.04, 0.01), blk, 0.28, 1.13, 0.2, -0.22, 0, 0);                    // billetero
       S(boxG(0.07, 0.008, 0.01), 0x5affa0, 0.28, 1.17, 0.225, -0.22, 0, 0);
       // botonera: tres de apuesta + uno grande de girar
-      [[-0.3, 0xfff1c4], [-0.19, 0xffc84a], [-0.08, 0x6affb0]].forEach(function (b) { S(cylG(0.03, 0.032, 0.025, 10), b[1], b[0], 1.072, 0.24, -0.22, 0, 0); k.add('METAL', torG(0.033, 0.006, 4, 12), chrome, b[0], 1.064, 0.238, PI / 2 - 0.22, 0, 0); });
-      S(cylG(0.045, 0.048, 0.03, 12), 0xff4a3a, 0.08, 1.074, 0.24, -0.22, 0, 0);
-      k.add('METAL', torG(0.048, 0.008, 4, 14), chrome, 0.08, 1.064, 0.238, PI / 2 - 0.22, 0, 0);
+      [[-0.3, 0xfff1c4], [-0.19, 0xffc84a], [-0.08, 0x6affb0]].forEach(function (b) { S(rcylG(0.03, 0.032, 0.025, 16, 0.008), b[1], b[0], 1.072, 0.24, -0.22, 0, 0); k.add('METAL', torG(0.033, 0.006, 6, 16), chrome, b[0], 1.064, 0.238, PI / 2 - 0.22, 0, 0); });
+      S(rcylG(0.045, 0.048, 0.03, 20, 0.01), 0xff4a3a, 0.08, 1.074, 0.24, -0.22, 0, 0);
+      k.add('METAL', torG(0.048, 0.008, 6, 20), chrome, 0.08, 1.064, 0.238, PI / 2 - 0.22, 0, 0);
       // tiras de luz laterales
-      [-0.405, 0.405].forEach(function (x) { S(boxG(0.025, 0.72, 0.025), lite, x, 1.43, 0.19); S(boxG(0.025, 0.76, 0.025), lite, x, 0.53, 0.31); });
-      S(boxG(0.6, 0.02, 0.02), lite, 0, 0.88, 0.312);                                                   // filete sobre la puerta
+      [-0.405, 0.405].forEach(function (x) { S(cylG(0.013, 0.013, 0.72, 8), lite, x, 1.43, 0.19); S(cylG(0.013, 0.013, 0.76, 8), lite, x, 0.53, 0.31); });
+      S(cylG(0.01, 0.01, 0.6, 8), lite, 0, 0.88, 0.312, 0, 0, PI / 2);                                  // filete sobre la puerta
+      // molduras de bronce: media caña al pie del gabinete y bajo la repisa (paso 2)
+      k.add('METAL', cylG(0.014, 0.014, 0.86, 10), trim, 0, 0.125, 0.31, 0, 0, PI / 2);
+      k.add('METAL', cylG(0.012, 0.012, 0.86, 10), trim, 0, 0.955, 0.33, 0, 0, PI / 2);
       // palanca: base cromada
-      k.add('METAL', cylG(0.075, 0.075, 0.06, 14), chrome, 0.445, 1.2, 0.0, 0, 0, PI / 2);
-      k.add('METAL', rbox(0.04, 0.22, 0.12, 0.015), chrome, 0.435, 1.2, 0.0);
+      k.add('METAL', rcylG(0.075, 0.075, 0.06, 22, 0.015), chrome, 0.445, 1.2, 0.0, 0, 0, PI / 2);
+      k.add('METAL', sbox(0.04, 0.22, 0.12, 0.015), chrome, 0.435, 1.2, 0.0);
       // --- copete según el modelo ---
       if (model === 'clasica') {
-        k.add('METAL', rbox(0.9, 0.04, 0.58, 0.015), trim, 0, 1.845, -0.05);
-        k.add('PAINT', rbox(0.88, 0.34, 0.54, 0.05, 2), C, 0, 2.02, -0.05);
-        k.add('PAINT', cylG(0.27, 0.27, 0.86, 16, false, 0, PI), C, 0, 2.19, -0.05, 0, 0, PI / 2, 0.42, 1, 1);
-        k.add('METAL', torG(0.27, 0.012, 4, 16, PI), trim, 0, 2.19, 0.225, 0, 0, 0, 1, 0.42, 1);
-        k.add('METAL', sphG(0.05, 10, 8), brass, 0, 2.31, -0.05);
+        k.add('METAL', sbox(0.9, 0.04, 0.58, 0.015), trim, 0, 1.845, -0.05);
+        k.add('PAINT', sbox(0.88, 0.34, 0.54, 0.05, 2), C, 0, 2.02, -0.05);
+        k.add('PAINT', cylG(0.27, 0.27, 0.86, 24, false, 0, PI), C, 0, 2.19, -0.05, 0, 0, PI / 2, 0.42, 1, 1);
+        k.add('METAL', torG(0.27, 0.012, 6, 24, PI), trim, 0, 2.19, 0.225, 0, 0, 0, 1, 0.42, 1);
+        k.add('METAL', sphG(0.05, 16, 12), brass, 0, 2.31, -0.05);
         for (var row = 0; row < 2; row++) for (var i = 0; i < 9; i++) B(-0.38 + i * 0.095, row ? 2.165 : 1.875, 0.235);
         for (var a = 0; a <= 8; a++) { var an = a / 8 * PI; B(Math.cos(an) * 0.4, 2.19 + Math.sin(an) * 0.106, 0.215, 0.02); }
       } else if (model === 'dorada') {
-        k.add('METAL', rbox(0.9, 0.04, 0.58, 0.015), brass, 0, 1.845, -0.05);
-        k.add('PAINT', rbox(0.88, 0.34, 0.54, 0.05, 2), 0x1a1206, 0, 2.02, -0.05);
-        [[0.78, 2.235], [0.6, 2.315], [0.42, 2.395]].forEach(function (s, j) { k.add('PAINT', rbox(s[0], 0.08, 0.46 - j * 0.06, 0.02), C, 0, s[1], -0.07); k.add('METAL', rbox(s[0] + 0.02, 0.015, 0.47 - j * 0.06, 0.006), brass, 0, s[1] + 0.045, -0.07); });
-        k.add('METAL', cylG(0.3, 0.3, 0.03, 14, false, -PI / 2, PI), brass, 0, 2.44, -0.12, -PI / 2, 0, 0, 1, 1, 1);  // abanico
+        k.add('METAL', sbox(0.9, 0.04, 0.58, 0.015), brass, 0, 1.845, -0.05);
+        k.add('PAINT', sbox(0.88, 0.34, 0.54, 0.05, 2), 0x1a1206, 0, 2.02, -0.05);
+        [[0.78, 2.235], [0.6, 2.315], [0.42, 2.395]].forEach(function (s, j) { k.add('PAINT', sbox(s[0], 0.08, 0.46 - j * 0.06, 0.02), C, 0, s[1], -0.07); k.add('METAL', sbox(s[0] + 0.02, 0.015, 0.47 - j * 0.06, 0.006), brass, 0, s[1] + 0.045, -0.07); });
+        k.add('METAL', cylG(0.3, 0.3, 0.03, 24, false, -PI / 2, PI), brass, 0, 2.44, -0.12, -PI / 2, 0, 0, 1, 1, 1);  // abanico
+        k.add('METAL', torG(0.3, 0.014, 6, 24, PI), brass, 0, 2.44, -0.1, 0, 0, 0);
         for (var fan = 0; fan < 7; fan++) { var fa = -PI / 2 + (fan + 0.5) / 7 * PI; S(boxG(0.012, 0.22, 0.01), 0xfff1c4, Math.sin(fa) * 0.14, 2.44 + Math.cos(fa) * 0.14, -0.1, 0, 0, -fa); }
-        [-0.445, 0.445].forEach(function (x) { k.add('METAL', rbox(0.05, 1.9, 0.06, 0.015), brass, x, 1.08, 0.24); k.add('METAL', sphG(0.04, 8, 6), brass, x, 2.06, 0.24); });
+        [-0.445, 0.445].forEach(function (x) { k.add('METAL', cylG(0.026, 0.026, 1.9, 12), brass, x, 1.08, 0.24); k.add('METAL', sphG(0.042, 14, 10), brass, x, 2.06, 0.24); k.add('METAL', torG(0.03, 0.008, 5, 12), brass, x, 2.02, 0.24, PI / 2); });
         for (var p = 0; p < 30; p++) { var u = p / 30, px, py; if (u < 0.35) { px = -0.4 + u / 0.35 * 0.8; py = 2.175; } else if (u < 0.5) { px = 0.4; py = 2.175 - (u - 0.35) / 0.15 * 0.3; } else if (u < 0.85) { px = 0.4 - (u - 0.5) / 0.35 * 0.8; py = 1.875; } else { px = -0.4; py = 1.875 + (u - 0.85) / 0.15 * 0.3; } B(px, py, 0.235, 0.022); }
       } else if (model === 'diamante') {
-        k.add('METAL', rbox(0.9, 0.04, 0.58, 0.015), chrome, 0, 1.845, -0.05);
-        k.add('PAINT', rbox(0.86, 0.36, 0.5, 0.06, 2), 0x0a1a24, 0, 2.04, -0.07, -0.18, 0, 0);
-        k.add('METAL', cylG(0.03, 0.06, 0.12, 10), chrome, 0, 2.27, -0.08);
+        k.add('METAL', sbox(0.9, 0.04, 0.58, 0.015), chrome, 0, 1.845, -0.05);
+        k.add('PAINT', sbox(0.86, 0.36, 0.5, 0.06, 2), 0x0a1a24, 0, 2.04, -0.07, -0.18, 0, 0);
+        k.add('METAL', latheG('diapie', [[0.065, 0], [0.06, 0.02], [0.035, 0.05], [0.028, 0.1], [0.04, 0.12], [0, 0.12]], 16), chrome, 0, 2.21, -0.08);
         S(new T.OctahedronGeometry(0.2, 0), 0xcff8ff, 0, 2.52, -0.08, 0, PI / 4, 0, 1.0, 1.25, 0.55);
         k.add('PAINT', new T.OctahedronGeometry(0.205, 0), 0x2a8ab0, 0, 2.52, -0.085, 0, PI / 4, 0, 1.06, 1.3, 0.5);
         // LEDs corriendo por los bordes del gabinete
@@ -642,29 +787,30 @@
         for (var l2 = 0; l2 < 24; l2++) { var ly2 = 0.16 + (23 - l2) * 0.075; B(0.43, ly2, 0.19 + (ly2 < 0.98 ? 0.12 : 0), 0.016); }
         for (var l3 = 0; l3 < 16; l3++) B(-0.4 + l3 * 0.0533, 1.875, 0.235, 0.016);
       } else { // jackpot
-        k.add('METAL', rbox(0.9, 0.04, 0.58, 0.015), brass, 0, 1.845, -0.05);
-        k.add('PAINT', rbox(0.88, 0.3, 0.54, 0.05, 2), C, 0, 2.0, -0.05);
-        k.add('PAINT', cylG(0.44, 0.44, 0.14, 24), 0x1e0638, 0, 2.58, -0.06, PI / 2, 0, 0);
-        k.add('METAL', torG(0.44, 0.03, 5, 28), brass, 0, 2.58, 0.015, 0, 0, 0);
-        k.add('METAL', rbox(0.3, 0.14, 0.2, 0.03), brass, 0, 2.17, -0.06);
-        [-1, 1].forEach(function (s) { k.add('METAL', rbox(0.05, 0.5, 0.18, 0.02), chrome, s * 0.47, 2.4, -0.06, 0, 0, -s * 0.35); });
+        k.add('METAL', sbox(0.9, 0.04, 0.58, 0.015), brass, 0, 1.845, -0.05);
+        k.add('PAINT', sbox(0.88, 0.3, 0.54, 0.05, 2), C, 0, 2.0, -0.05);
+        k.add('PAINT', rcylG(0.44, 0.44, 0.14, 36, 0.03), 0x1e0638, 0, 2.58, -0.06, PI / 2, 0, 0);
+        k.add('METAL', torG(0.44, 0.03, 8, 40), brass, 0, 2.58, 0.015, 0, 0, 0);
+        k.add('METAL', sbox(0.3, 0.14, 0.2, 0.03), brass, 0, 2.17, -0.06);
+        [-1, 1].forEach(function (s) { k.add('METAL', sbox(0.05, 0.5, 0.18, 0.02), chrome, s * 0.47, 2.4, -0.06, 0, 0, -s * 0.35); });
         for (var jb = 0; jb < 24; jb++) { var ja = jb / 24 * TAU; B(Math.cos(ja) * 0.4, 2.58 + Math.sin(ja) * 0.4, 0.05, 0.022); }
         for (var r2 = 0; r2 < 9; r2++) B(-0.38 + r2 * 0.095, 1.875, 0.235);
-        S(rbox(0.6, 0.08, 0.02, 0.01), 0xff5a8a, 0, 2.04, 0.225);                                         // display del pozo
+        S(sbox(0.6, 0.08, 0.02, 0.01), 0xff5a8a, 0, 2.04, 0.225);                                         // display del pozo
       }
       if (stool) addStoolTo(k, 0.85, 0.72);
       var out = k.merged();
       // puerta de la caja (bisagra a la izquierda) y palanca: piezas que se mueven
       var dk = new CKit();
-      dk.add('PAINT', rbox(0.6, 0.54, 0.03, 0.012), C, 0.3, 0, 0);
-      dk.add('PAINT', rbox(0.5, 0.42, 0.01, 0.006), new T.Color(C).multiplyScalar(0.8).getHex(), 0.3, 0, 0.016);
-      dk.add('PAINT', cylG(0.025, 0.025, 0.02, 10), brass, 0.52, 0, 0.03, PI / 2);
-      dk.add('PAINT', boxG(0.12, 0.02, 0.012), brass, 0.3, 0.17, 0.03);
-      [[0.3, 0.22, 0.5, 0.012], [0.3, -0.22, 0.5, 0.012]].forEach(function (q) { dk.add('PAINT', boxG(q[2], q[3], 0.008), trim, q[0], q[1], 0.02); });
+      dk.add('PAINT', sbox(0.6, 0.54, 0.03, 0.012), C, 0.3, 0, 0);
+      dk.add('PAINT', sbox(0.5, 0.42, 0.01, 0.006), new T.Color(C).multiplyScalar(0.8).getHex(), 0.3, 0, 0.016);
+      dk.add('PAINT', rcylG(0.025, 0.025, 0.02, 14, 0.006), brass, 0.52, 0, 0.03, PI / 2);
+      dk.add('PAINT', sbox(0.12, 0.02, 0.012, 0.005), brass, 0.3, 0.17, 0.03);
+      [[0.3, 0.22, 0.5, 0.012], [0.3, -0.22, 0.5, 0.012]].forEach(function (q) { dk.add('PAINT', sbox(q[2], q[3], 0.01, 0.004), trim, q[0], q[1], 0.02); });
       out.DOOR = dk.merged().PAINT;
       var lk = new CKit();
-      lk.add('METAL', cylG(0.016, 0.016, 0.42, 8), chrome, 0, 0.21, 0);
-      lk.add('METAL', sphG(0.058, 12, 9), model === 'diamante' ? 0x2a9ad6 : model === 'jackpot' ? 0x9b3ad6 : 0xd4232f, 0, 0.44, 0);
+      lk.add('METAL', cylG(0.016, 0.016, 0.42, 12), chrome, 0, 0.21, 0);
+      lk.add('METAL', torG(0.018, 0.006, 5, 12), chrome, 0, 0.395, 0, PI / 2);
+      lk.add('METAL', sphG(0.058, 18, 12), model === 'diamante' ? 0x2a9ad6 : model === 'jackpot' ? 0x9b3ad6 : 0xd4232f, 0, 0.44, 0);
       out.LEVER = lk.merged().METAL;
       // sombra: gabinete + banqueta en un solo quad doble
       out.BLOB = mergeGeos([{ geo: planeG(1.3, 1.05), m: mtx(0, 0.012, 0, -PI / 2) }].concat(stool ? [{ geo: planeG(0.55, 0.55), m: mtx(0, 0.013, 0.85, -PI / 2) }] : []));
@@ -697,7 +843,7 @@
   }
 
   /**
-   * makeSlotMachine(def) -> Group  (~3,500 tris, 9 draw calls con banqueta)
+   * makeSlotMachine(def) -> Group  (~9,500 tris / ~8,500 vértices indexados, 9 draw calls con banqueta)
    * def: { color:0xc8323a, name:'Tragamonedas Clásica', model:'clasica'|'dorada'|'diamante'|'jackpot', stool:false, blob:true }
    * Footprint 0.9 x 0.7 m, height 2.36 m (jackpot 3.0 m). Front (+Z) = screen side.
    * api: setReels(symbols[3], win) (si estaba girando, para los rodillos de a uno), setBroken(bool), setDark(bool) (sin luz),
@@ -815,32 +961,20 @@
   // STOOL
   // ==================================================================
   /**
-   * makeStool(opts) -> Group   (~300 tris, 2 draw calls)
+   * makeStool(opts) -> Group   (~1,350 tris / ~900 vértices, 2 draw calls)
    * opts: { height:0.72, blob }  api.seatHeight
    */
   function makeStool(opts) {
     opts = opts || {}; var h = opts.height || 0.72;
     var g = new T.Group();
-    inst(cachedParts('stool|' + h, function (k) {
-      k.add(cylG(0.2, 0.22, 0.03, 14), MAT.brass, 0, 0.015, 0);
-      k.add(cylG(0.03, 0.03, h - 0.08, 8), MAT.brass, 0, h / 2, 0);
-      k.add(torG(0.15, 0.012, 4, 14), MAT.brass, 0, h * 0.4, 0, PI / 2);
-      k.add(cylG(0.2, 0.18, 0.09, 14), MAT.leatherRed, 0, h - 0.03, 0);
-      k.add(torG(0.19, 0.03, 4, 14), MAT.leatherRed, 0, h + 0.01, 0, PI / 2);
-    }), g);
+    inst(cachedParts('stool|' + h, function (k) { addStoolKit(k, 0, 0, h); }), g);
     addBlob(g, 0.55, 0.55, opts);
     return finish(g, { seatHeight: h + 0.04 }, 'Stool');
   }
   /** Varias banquetas fundidas en las mallas del mueble (2 draw calls para todas) + sus sombras en un solo quad múltiple. */
   function addStools(g, key, pts, h, opts) {
     inst(cachedParts('stools|' + key + '|' + h, function (k) {
-      pts.forEach(function (p) {
-        k.add(cylG(0.2, 0.22, 0.03, 14), MAT.brass, p[0], 0.015, p[1]);
-        k.add(cylG(0.03, 0.03, h - 0.08, 8), MAT.brass, p[0], h / 2, p[1]);
-        k.add(torG(0.15, 0.012, 4, 14), MAT.brass, p[0], h * 0.4, p[1], PI / 2);
-        k.add(cylG(0.2, 0.18, 0.09, 14), MAT.leatherRed, p[0], h - 0.03, p[1]);
-        k.add(torG(0.19, 0.03, 4, 14), MAT.leatherRed, p[0], h + 0.01, p[1], PI / 2);
-      });
+      pts.forEach(function (p) { addStoolKit(k, p[0], p[1], h); });
     }), g);
     if (opts && opts.blob === false) return;
     var b = new T.Mesh(cache(_geos, 'stoolblobs|' + key, function () { return mergeGeos(pts.map(function (p) { return { geo: planeG(0.55, 0.55), m: mtx(p[0], 0.013, p[1], -PI / 2) }; })); }), blobMat());
@@ -878,7 +1012,7 @@
     });
   }
   /**
-   * makeBlackjackTable(opts) -> Group  (~2,600 tris with stools, ~10 draw calls)
+   * makeBlackjackTable(opts) -> Group  (~11,000 tris / ~8,000 vértices with stools, ~10 draw calls)
    * Half-moon table, radius 1.15 m, felt at 0.86 m. Players on the curved +Z side,
    * dealer stands at local (0, 0, -0.45) facing +Z.
    * opts: { stools:true, blob }   api.seats: [{x,z,rotY}] world-local positions of stools
@@ -887,18 +1021,20 @@
     opts = opts || {};
     var g = new T.Group(), R = 1.15, H = 0.86;
     inst(cachedParts('bj', function (k) {
-      k.add(cylG(R - 0.05, R - 0.12, 0.72, 20, false, -PI / 2, PI), MAT.woodDark, 0, 0.44, 0);   // skirt
-      k.add(rbox(2.2, 0.72, 0.08, 0.02), MAT.woodDark, 0, 0.44, -0.04);                       // dealer side
-      k.add(cylG(0.34, 0.4, 0.08, 16), MAT.black, 0, 0.04, 0.35);                              // foot
-      k.add(torG(R - 0.02, 0.075, 6, 24, PI), MAT.padding, 0, H, 0, PI / 2);                    // padded rail
-      k.add(rbox(2.36, 0.07, 0.16, 0.03), MAT.padding, 0, H, -0.07);                           // dealer edge
-      k.add(torG(R - 0.14, 0.012, 4, 24, PI), MAT.brass, 0, H + 0.005, 0, PI / 2);              // brass inlay
+      k.add(cylG(R - 0.05, R - 0.12, 0.72, 40, false, -PI / 2, PI), MAT.woodDark, 0, 0.44, 0);   // skirt
+      k.add(sbox(2.2, 0.72, 0.08, 0.02), MAT.woodDark, 0, 0.44, -0.04);                       // dealer side
+      k.add(latheG('bjfoot', [[0, 0], [0.4, 0], [0.41, 0.012], [0.4, 0.03], [0.36, 0.06], [0.33, 0.08], [0, 0.08]], 28), MAT.black, 0, 0, 0.35); // foot (torneado)
+      k.add(torG(R - 0.02, 0.075, 10, 44, PI), MAT.padding, 0, H, 0, PI / 2);                   // padded rail (cuero acolchado)
+      k.add(sbox(2.36, 0.08, 0.16, 0.036, 2), MAT.padding, 0, H, -0.07);                       // dealer edge
+      k.add(torG(R - 0.14, 0.012, 6, 44, PI), MAT.brass, 0, H + 0.005, 0, PI / 2);              // brass inlay
+      k.add(torG(R - 0.06, 0.014, 6, 44, PI), MAT.brass, 0, H - 0.085, 0, PI / 2);              // moldura dorada bajo el rail
+      k.add(torG(R - 0.12, 0.012, 6, 44, PI), MAT.brass, 0, 0.1, 0, PI / 2);                    // y al pie del faldón
       // chip tray and shoe
-      k.add(rbox(0.56, 0.04, 0.14, 0.01), MAT.black, 0, H + 0.02, 0.06);
+      k.add(sbox(0.56, 0.04, 0.14, 0.012), MAT.black, 0, H + 0.02, 0.06);
       var chipCols = [0xd4423f, 0x2a6fd6, 0x1d8a4e, 0x15171a, 0xf3e9d2, 0xd9a84a];
       for (var i = 0; i < 6; i++) k.add(chipG(0.03, 0.05), chipMat(chipCols[i]), -0.21 + i * 0.084, H + 0.06, 0.06, PI / 2, 0, 0);
-      k.add(rbox(0.16, 0.1, 0.24, 0.02), MAT.black, 0.62, H + 0.05, 0.12, 0, -0.3, 0);
-      k.add(boxG(0.1, 0.06, 0.02), std(0xb02020, 0.6), 0.6, H + 0.07, 0.24, 0, -0.3, 0);
+      k.add(sbox(0.16, 0.1, 0.24, 0.025), MAT.black, 0.62, H + 0.05, 0.12, 0, -0.3, 0);
+      k.add(sbox(0.1, 0.06, 0.02, 0.008), std(0xb02020, 0.6), 0.6, H + 0.07, 0.24, 0, -0.3, 0);
       // a few cards and chips on the felt
       k.add(boxG(0.06, 0.003, 0.09), pkCardMat({ r: 1, s: 0 }), -0.04, H + 0.005, 0.38, 0, 0.1 + PI, 0);
       k.add(boxG(0.06, 0.003, 0.09), pkCardMat({ r: 13, s: 1 }), 0.03, H + 0.006, 0.39, 0, -0.15 + PI, 0);
@@ -987,15 +1123,18 @@
     var ang = function (i) { return PI * (0.06 + i * 0.176); };
     var chipCols = [0xd4423f, 0x2a6fd6, 0x1d8a4e, 0x15171a, 0xf3e9d2, 0xd9a84a];
     inst(cachedParts('poker', function (k) {
-      k.add(cylG(1, 1, 0.1, 32), MAT.woodDark, 0, H - 0.06, 0, 0, 0, 0, RX, 1, RZ);              // table top
-      k.add(cylG(0.96, 0.9, 0.16, 32), MAT.woodDark, 0, H - 0.18, 0, 0, 0, 0, RX, 1, RZ);         // apron
-      k.add(cylG(0.18, 0.26, 0.6, 12), MAT.woodDark, -0.55, 0.36, 0);                             // two pedestals
-      k.add(cylG(0.18, 0.26, 0.6, 12), MAT.woodDark, 0.55, 0.36, 0);
-      k.add(rbox(1.5, 0.06, 0.5, 0.02), MAT.black, 0, 0.03, 0);                                    // foot
-      k.add(torG(1, 0.075, 6, 40), MAT.padding, 0, H + 0.01, 0, PI / 2, 0, 0, RX, RZ, 1.2);        // padded rail
-      k.add(torG(0.9, 0.01, 4, 40), MAT.brass, 0, H + 0.003, 0, PI / 2, 0, 0, RX, RZ, 1);         // brass inlay
+      k.add(rcylG(1, 1, 0.1, 56, 0.03), MAT.woodDark, 0, H - 0.06, 0, 0, 0, 0, RX, 1, RZ);       // table top
+      k.add(cylG(0.96, 0.9, 0.16, 56), MAT.woodDark, 0, H - 0.18, 0, 0, 0, 0, RX, 1, RZ);         // apron
+      k.add(torG(0.93, 0.012, 6, 64), MAT.brass, 0, H - 0.26, 0, PI / 2, 0, 0, RX, RZ, 1);        // moldura dorada del faldón
+      var ped = latheG('pkped', [[0, 0], [0.27, 0], [0.275, 0.02], [0.25, 0.05], [0.2, 0.09], [0.17, 0.16], [0.16, 0.42], [0.18, 0.5], [0.2, 0.55], [0.2, 0.6], [0, 0.6]], 22);
+      k.add(ped, MAT.woodDark, -0.55, 0.06, 0);                                                   // two pedestals (torneados)
+      k.add(ped, MAT.woodDark, 0.55, 0.06, 0);
+      k.add(torG(0.17, 0.012, 6, 22), MAT.brass, -0.55, 0.5, 0, PI / 2); k.add(torG(0.17, 0.012, 6, 22), MAT.brass, 0.55, 0.5, 0, PI / 2);
+      k.add(sbox(1.5, 0.06, 0.5, 0.025, 2), MAT.black, 0, 0.03, 0);                               // foot
+      k.add(torG(1, 0.075, 10, 72), MAT.padding, 0, H + 0.01, 0, PI / 2, 0, 0, RX, RZ, 1.2);       // padded rail (cuero acolchado)
+      k.add(torG(0.9, 0.01, 6, 64), MAT.brass, 0, H + 0.003, 0, PI / 2, 0, 0, RX, RZ, 1);         // brass inlay
       // croupier chip tray (sits in the rail on the -Z side) and the deck
-      k.add(rbox(0.5, 0.05, 0.14, 0.01), MAT.black, 0, H + 0.02, -0.62);
+      k.add(sbox(0.5, 0.05, 0.14, 0.01), MAT.black, 0, H + 0.02, -0.62);
       for (var c = 0; c < 6; c++) k.add(chipG(0.026, 0.1), chipMat(chipCols[c]), -0.19 + c * 0.076, H + 0.05, -0.62, PI / 2, 0, 0);
       k.add(boxG(0.07, 0.04, 0.1), pkCardMat(true), 0.38, H + 0.02, -0.5, 0, 0.2, 0);
       // a chip stack in front of every seat
@@ -1006,7 +1145,7 @@
         for (var s2 = 0; s2 < n2; s2++) k.add(chipG(0.026, 0.011), chipMat(chipCols[(i + 2) % 6]), x - tx, H + 0.006 + s2 * 0.012, z - tz);
       }
     }), g);
-    var felt = new T.Mesh(cache(_geos, 'pkfelt', function () { return new T.CircleGeometry(1, 40); }),
+    var felt = new T.Mesh(cache(_geos, 'pkfelt', function () { return new T.CircleGeometry(1, 64); }),
       cache(_mats, 'pkfeltmat', function () { return new T.MeshStandardMaterial({ map: feltPokerTex(RX, RZ), roughness: 0.95 }); }));
     felt.rotation.x = -PI / 2; felt.scale.set(RX * 0.93, RZ * 0.93, 1); felt.position.y = H - 0.005; g.add(felt);
     // dynamic pieces: cards, pot chips, dealer button
@@ -1119,24 +1258,25 @@
     opts = opts || {};
     var g = new T.Group(), H = 0.84, WX = -0.95;
     inst(cachedParts('roulette', function (k) {
-      k.add(rbox(2.8, 0.7, 1.3, 0.06, 2), MAT.woodDark, 0, 0.45, 0);
-      k.add(rbox(2.6, 0.1, 1.1, 0.02), MAT.black, 0, 0.05, 0);
+      k.add(sbox(2.8, 0.7, 1.3, 0.06, 2), MAT.woodDark, 0, 0.45, 0);
+      k.add(sbox(2.6, 0.1, 1.1, 0.03), MAT.black, 0, 0.05, 0);
+      k.add(sbox(2.84, 0.035, 1.34, 0.016), MAT.brass, 0, 0.12, 0);                                // moldura dorada al pie
+      k.add(sbox(2.84, 0.03, 1.34, 0.014), MAT.brass, 0, 0.79, 0);                                 // y bajo el rail
       // padded rail
-      k.add(rbox(2.94, 0.08, 0.12, 0.04, 2), MAT.padding, 0, H, 0.66);
-      k.add(rbox(2.94, 0.08, 0.12, 0.04, 2), MAT.padding, 0, H, -0.66);
-      k.add(rbox(0.12, 0.08, 1.44, 0.04, 2), MAT.padding, 1.41, H, 0);
-      k.add(rbox(0.12, 0.08, 1.44, 0.04, 2), MAT.padding, -1.41, H, 0);
-      k.add(rbox(2.8, 0.015, 0.02, 0.005), MAT.brass, 0, H - 0.03, 0.73);
+      k.add(sbox(2.94, 0.08, 0.12, 0.04, 2), MAT.padding, 0, H, 0.66);
+      k.add(sbox(2.94, 0.08, 0.12, 0.04, 2), MAT.padding, 0, H, -0.66);
+      k.add(sbox(0.12, 0.08, 1.44, 0.04, 2), MAT.padding, 1.41, H, 0);
+      k.add(sbox(0.12, 0.08, 1.44, 0.04, 2), MAT.padding, -1.41, H, 0);
+      k.add(sbox(2.8, 0.015, 0.02, 0.005), MAT.brass, 0, H - 0.03, 0.73);
       // wheel housing
-      k.add(cylG(0.5, 0.52, 0.14, 28), MAT.wood, WX, H + 0.05, 0);
-      k.add(torG(0.49, 0.025, 4, 28), MAT.brass, WX, H + 0.12, 0, PI / 2);
-      var pts = [new T.Vector2(0.46, 0.13), new T.Vector2(0.42, 0.12), new T.Vector2(0.37, 0.085), new T.Vector2(0.33, 0.06)];
-      k.add(new T.LatheGeometry(pts, 28), MAT.woodDark, WX, H, 0);
+      k.add(rcylG(0.5, 0.52, 0.14, 48, 0.02), MAT.wood, WX, H + 0.05, 0);
+      k.add(torG(0.49, 0.025, 8, 48), MAT.brass, WX, H + 0.12, 0, PI / 2);
+      k.add(latheG('roubowl', [[0.46, 0.13], [0.42, 0.12], [0.37, 0.085], [0.33, 0.06]], 48), MAT.woodDark, WX, H, 0);
       // chips near layout
       var cc = [0xd4423f, 0x2a6fd6, 0x1d8a4e, 0xd9a84a];
       for (var i = 0; i < 4; i++) for (var s = 0; s < 3 + i; s++) k.add(chipG(0.026, 0.01), chipMat(cc[i]), 1.0 + (i % 2) * 0.07, H + 0.005 + s * 0.011, -0.45 + Math.floor(i / 2) * 0.07);
       // marker dolly
-      k.add(cylG(0.02, 0.025, 0.08, 8), MAT.chrome, 0.2, H + 0.04, 0.05);
+      k.add(latheG('dolly', [[0.026, 0], [0.024, 0.01], [0.012, 0.03], [0.01, 0.07], [0.02, 0.08], [0, 0.085]], 14), MAT.chrome, 0.2, H, 0.05);
     }), g);
     // felt
     var feltTop = new T.Mesh(planeG(1.7, 0.85), cache(_mats, 'roufelt', function () { return new T.MeshStandardMaterial({ map: rouletteLayoutTex(), roughness: 0.95 }); }));
@@ -1144,16 +1284,16 @@
     var feltFill = new T.Mesh(planeG(2.72, 1.22), MAT.feltGreen); feltFill.rotation.x = -PI / 2; feltFill.position.set(0, H - 0.008, 0); g.add(feltFill);
     // rotor
     var rotor = new T.Group(); rotor.position.set(WX, H + 0.06, 0); g.add(rotor);
-    var disk = new T.Mesh(cache(_geos, 'rotordisk', function () { return new T.CircleGeometry(0.33, 37); }),
+    var disk = new T.Mesh(cache(_geos, 'rotordisk', function () { return new T.CircleGeometry(0.33, 74); }),
       cache(_mats, 'rotormat', function () { return new T.MeshStandardMaterial({ map: rotorTex(), roughness: 0.4 }); }));
     disk.rotation.x = -PI / 2; disk.position.y = 0.001; rotor.add(disk);
     rotor.add(new T.Mesh(cache(_geos, 'turret', function () {
-      return mergeGeos([{ geo: cylG(0.02, 0.07, 0.07, 12), m: mtx(0, 0.035, 0) }, { geo: cylG(0.012, 0.012, 0.12, 8), m: mtx(0, 0.1, 0) },
-        { geo: cylG(0.008, 0.008, 0.22, 6), m: mtx(0, 0.14, 0, 0, 0, PI / 2) }, { geo: cylG(0.008, 0.008, 0.22, 6), m: mtx(0, 0.14, 0, PI / 2) },
-        { geo: sphG(0.016, 8, 6), m: mtx(0.11, 0.14, 0) }, { geo: sphG(0.016, 8, 6), m: mtx(-0.11, 0.14, 0) },
-        { geo: sphG(0.016, 8, 6), m: mtx(0, 0.14, 0.11) }, { geo: sphG(0.016, 8, 6), m: mtx(0, 0.14, -0.11) }, { geo: sphG(0.022, 8, 6), m: mtx(0, 0.18, 0) }]);
+      return mergeGeos([{ geo: latheG('turret', [[0.07, 0], [0.068, 0.012], [0.045, 0.035], [0.022, 0.065], [0.014, 0.08], [0.012, 0.16], [0, 0.16]], 18), m: mtx(0, 0, 0) },
+        { geo: cylG(0.008, 0.008, 0.22, 8), m: mtx(0, 0.14, 0, 0, 0, PI / 2) }, { geo: cylG(0.008, 0.008, 0.22, 8), m: mtx(0, 0.14, 0, PI / 2) },
+        { geo: sphG(0.016, 10, 8), m: mtx(0.11, 0.14, 0) }, { geo: sphG(0.016, 10, 8), m: mtx(-0.11, 0.14, 0) },
+        { geo: sphG(0.016, 10, 8), m: mtx(0, 0.14, 0.11) }, { geo: sphG(0.016, 10, 8), m: mtx(0, 0.14, -0.11) }, { geo: sphG(0.022, 12, 10), m: mtx(0, 0.18, 0) }]);
     }), MAT.brass));
-    var ball = new T.Mesh(sphG(0.014, 10, 8), std(0xffffff, 0.2, 0, 0x444444)); g.add(ball);
+    var ball = new T.Mesh(sphG(0.014, 12, 10), std(0xffffff, 0.2, 0, 0x444444)); g.add(ball);
     var rotA = 0, rotV = 0.6, ballA = 0, ballV = 0, ballR = 0.4, phase = 'idle', relA = 0, cb = null;
     function placeBall() {
       var y = phase === 'orbit' ? H + 0.105 : H + 0.075 - (0.4 - ballR) * 0.15;
@@ -1198,7 +1338,7 @@
     });
   }
   /**
-   * makeBar(opts) -> Group  (~4,500 tris incl. 4 stools, ~16 draw calls)
+   * makeBar(opts) -> Group  (~20,000 tris / ~14,000 vértices incl. 3 stools, ~16 draw calls)
    * Counter 4 m wide (x[-2,2]) centred at z=0, depth 0.7, height 1.08.
    * Back bar with bottles and mirror at z=-1.25. Customers on +Z side.
    * opts: { width:4, stools:4, blob }  api.seats [{x,z}], api.bartenderSpot {x,z}
@@ -1207,35 +1347,36 @@
     opts = opts || {}; var W = opts.width || 4, nSt = opts.stools == null ? 4 : opts.stools;
     var g = new T.Group();
     inst(cachedParts('bar|' + W, function (k) {
-      k.add(rbox(W, 1.0, 0.6, 0.04, 2), MAT.woodDark, 0, 0.5, 0);
-      for (var i = 0; i < Math.round(W / 0.5); i++) k.add(rbox(0.4, 0.62, 0.02, 0.01), MAT.wood, -W / 2 + 0.25 + i * 0.5, 0.52, 0.305);
-      k.add(rbox(W + 0.12, 0.06, 0.78, 0.025, 2), MAT.marble, 0, 1.05, 0.03);            // top
-      k.add(rbox(W + 0.14, 0.03, 0.04, 0.012), MAT.brass, 0, 1.0, 0.43);
-      k.add(cylG(0.025, 0.025, W, 8), MAT.brass, 0, 0.2, 0.42, 0, 0, PI / 2);          // foot rail
-      for (var j = 0; j < 5; j++) k.add(cylG(0.012, 0.012, 0.1, 6), MAT.brass, -W / 2 + 0.2 + j * (W - 0.4) / 4, 0.2, 0.36, PI / 2);
-      k.add(rbox(W, 0.08, 0.5, 0.01), MAT.black, 0, 0.04, 0.0);
+      k.add(sbox(W, 1.0, 0.6, 0.04, 2), MAT.woodDark, 0, 0.5, 0);
+      for (var i = 0; i < Math.round(W / 0.5); i++) k.add(sbox(0.4, 0.62, 0.02, 0.01), MAT.wood, -W / 2 + 0.25 + i * 0.5, 0.52, 0.305);
+      k.add(sbox(W + 0.12, 0.06, 0.78, 0.028, 2), MAT.marble, 0, 1.05, 0.03);            // top
+      k.add(sbox(W + 0.14, 0.03, 0.04, 0.012), MAT.brass, 0, 1.0, 0.43);
+      k.add(cylG(0.025, 0.025, W - 0.05, 14, true), MAT.brass, 0, 0.2, 0.42, 0, 0, PI / 2);          // foot rail
+      [-1, 1].forEach(function (sd) { k.add(sphG(0.025, 14, 7, 0, TAU, 0, PI / 2), MAT.brass, sd * (W / 2 - 0.025), 0.2, 0.42, 0, 0, -sd * PI / 2); });
+      for (var j = 0; j < 5; j++) { var bx = -W / 2 + 0.2 + j * (W - 0.4) / 4; k.add(cylG(0.012, 0.012, 0.1, 10), MAT.brass, bx, 0.2, 0.36, PI / 2); k.add(rcylG(0.03, 0.03, 0.012, 14, 0.004), MAT.brass, bx, 0.2, 0.31, PI / 2); }
+      k.add(cylG(0.018, 0.018, W + 0.1, 12), MAT.wood, 0, 1.02, 0.42, 0, 0, PI / 2);           // canto redondeado de la tapa (media caña)
+      k.add(sbox(W, 0.08, 0.5, 0.01), MAT.black, 0, 0.04, 0.0);
       // back bar
-      k.add(rbox(W, 0.9, 0.5, 0.03), MAT.woodDark, 0, 0.45, -1.3);
-      k.add(rbox(W + 0.1, 0.04, 0.56, 0.015), MAT.marble, 0, 0.92, -1.3);
-      k.add(rbox(W, 1.6, 0.06, 0.02), MAT.woodDark, 0, 1.75, -1.55);
+      k.add(sbox(W, 0.9, 0.5, 0.03), MAT.woodDark, 0, 0.45, -1.3);
+      k.add(sbox(W + 0.1, 0.04, 0.56, 0.015), MAT.marble, 0, 0.92, -1.3);
+      k.add(sbox(W, 1.6, 0.06, 0.02), MAT.woodDark, 0, 1.75, -1.55);
       k.add(planeG(W - 0.3, 1.2), std(0x24324a, 0.08, 0.6, 0x0a1220), 0, 1.65, -1.515);  // mirror
-      for (var s = 0; s < 2; s++) { k.add(rbox(W - 0.1, 0.03, 0.22, 0.01), MAT.wood, 0, 1.3 + s * 0.45, -1.43); k.add(rbox(W - 0.1, 0.01, 0.01, 0.003), MAT.brass, 0, 1.31 + s * 0.45, -1.32); }
-      k.add(rbox(W + 0.1, 0.12, 0.3, 0.02), MAT.woodDark, 0, 2.6, -1.42);
+      for (var s = 0; s < 2; s++) { k.add(sbox(W - 0.1, 0.03, 0.22, 0.01), MAT.wood, 0, 1.3 + s * 0.45, -1.43); k.add(sbox(W - 0.1, 0.01, 0.01, 0.003), MAT.brass, 0, 1.31 + s * 0.45, -1.32); }
+      k.add(sbox(W + 0.1, 0.12, 0.3, 0.02), MAT.woodDark, 0, 2.6, -1.42);
       // bottles
       var glass = [std(0x6b3a10, 0.15, 0.1, 0x200e02), std(0x1e5a2a, 0.15, 0.1, 0x061a0a), std(0xc8d4d0, 0.1, 0.1, 0x202424), std(0x7a1020, 0.15, 0.1, 0x200408), std(0x2a4a8a, 0.15, 0.1, 0x081830)];
       var nb = Math.round((W - 0.3) / 0.13);
       for (var sh = 0; sh < 3; sh++) for (var b = 0; b < nb; b++) {
         var x = -W / 2 + 0.2 + b * 0.13 + (sh % 2) * 0.05, y = sh === 0 ? 0.94 : 1.315 + (sh - 1) * 0.45, mat = glass[(b * 7 + sh * 3) % 5];
         var tall = 0.18 + ((b * 13 + sh) % 3) * 0.04;
-        k.add(cylG(0.035, 0.035, tall, 6), mat, x, y + tall / 2, -1.4);
-        k.add(cylG(0.012, 0.03, 0.08, 6), mat, x, y + tall + 0.04, -1.4);
+        k.add(latheG('bottle|' + tall, [[0, 0], [0.033, 0], [0.036, 0.012], [0.036, tall - 0.02], [0.03, tall + 0.005], [0.014, tall + 0.04], [0.012, tall + 0.075], [0.015, tall + 0.08], [0, tall + 0.082]], 10), mat, x, y, -1.4);
         if (sh === 0) k.add(boxG(0.05, 0.05, 0.002), MAT.ivory, x, y + tall * 0.45, -1.364);
       }
       // glasses, taps and register on counter
-      k.add(rbox(0.3, 0.3, 0.1, 0.02), MAT.chrome, 0.6, 1.23, -0.12);
-      for (var tp = 0; tp < 3; tp++) k.add(cylG(0.015, 0.015, 0.18, 6), MAT.brass, 0.5 + tp * 0.1, 1.3, -0.02);
-      for (var gl = 0; gl < 4; gl++) k.add(cylG(0.035, 0.028, 0.1, 8), std(0xbfd8e0, 0.05, 0.2, 0x1a2628), -1.4 + gl * 0.12, 1.13, 0.15);
-      k.add(rbox(0.36, 0.2, 0.3, 0.03), MAT.black, -0.6, 1.18, -0.15);
+      k.add(sbox(0.3, 0.3, 0.1, 0.02), MAT.chrome, 0.6, 1.23, -0.12);
+      for (var tp = 0; tp < 3; tp++) { k.add(cylG(0.015, 0.015, 0.18, 10), MAT.brass, 0.5 + tp * 0.1, 1.3, -0.02); k.add(sphG(0.024, 12, 8), MAT.ivory, 0.5 + tp * 0.1, 1.4, -0.02, 0, 0, 0, 1, 1.6, 1); }
+      for (var gl = 0; gl < 4; gl++) k.add(latheG('vaso', [[0, 0], [0.028, 0], [0.03, 0.006], [0.035, 0.1], [0.032, 0.1], [0.026, 0.008], [0, 0.008]], 14), std(0xbfd8e0, 0.05, 0.2, 0x1a2628), -1.4 + gl * 0.12, 1.08, 0.15);
+      k.add(sbox(0.36, 0.2, 0.3, 0.03), MAT.black, -0.6, 1.18, -0.15);
       k.add(planeG(0.26, 0.1), basic(0x5affa0), -0.6, 1.24, 0.001 + 0.0);
     }), g);
     var sign = makeNeonSign({ text: 'Bar', color: 0xff4f8a, color2: 0xffc24a, w: 1.9, h: 0.62, icons: ['cocktail'], flicker: false }); sign.position.set(0, 2.62, -1.27); g.add(sign);
@@ -1263,7 +1404,7 @@
     });
   }
   /**
-   * makeCashierCage(opts) -> Group  (~3,000 tris, ~9 draw calls)
+   * makeCashierCage(opts) -> Group  (~5,700 tris, ~9 draw calls)
    * 3.2 m wide, counter at 1.1 m, brass bars to 2.45 m, a service window centred at x=0.
    * Customers on +Z, cashier stands at (0, 0, -0.7).
    * opts: { width:3.2, blob }  api.cashierSpot, api.windowSpot
@@ -1272,29 +1413,31 @@
     opts = opts || {}; var W = opts.width || 3.2;
     var g = new T.Group();
     inst(cachedParts('cage|' + W, function (k) {
-      k.add(rbox(W, 1.06, 0.55, 0.03, 2), MAT.woodDark, 0, 0.53, 0);
-      for (var i = 0; i < Math.round(W / 0.8); i++) k.add(rbox(0.66, 0.7, 0.02, 0.01), MAT.wood, -W / 2 + 0.4 + i * 0.8, 0.55, 0.28);
-      k.add(rbox(W + 0.1, 0.06, 0.66, 0.02), MAT.marble, 0, 1.09, 0.03);
-      k.add(rbox(W + 0.1, 0.24, 0.12, 0.02), MAT.woodDark, 0, 2.55, 0.0);
-      k.add(rbox(W + 0.14, 0.03, 0.14, 0.01), MAT.brass, 0, 2.42, 0.0);
-      k.add(rbox(W + 0.14, 0.03, 0.14, 0.01), MAT.brass, 0, 1.135, 0.0);
+      k.add(sbox(W, 1.06, 0.55, 0.03, 2), MAT.woodDark, 0, 0.53, 0);
+      for (var i = 0; i < Math.round(W / 0.8); i++) k.add(sbox(0.66, 0.7, 0.02, 0.01), MAT.wood, -W / 2 + 0.4 + i * 0.8, 0.55, 0.28);
+      k.add(sbox(W + 0.1, 0.06, 0.66, 0.02), MAT.marble, 0, 1.09, 0.03);
+      k.add(sbox(W + 0.1, 0.24, 0.12, 0.02), MAT.woodDark, 0, 2.55, 0.0);
+      k.add(sbox(W + 0.14, 0.03, 0.14, 0.01), MAT.brass, 0, 2.42, 0.0);
+      k.add(sbox(W + 0.14, 0.03, 0.14, 0.01), MAT.brass, 0, 1.135, 0.0);
       // bars except a window opening |x|<0.4 below 1.75
       for (var x = -W / 2 + 0.06; x <= W / 2 - 0.05; x += 0.1) {
-        if (Math.abs(x) < 0.42) { k.add(cylG(0.009, 0.009, 0.65, 6), MAT.brass, x, 2.08, 0.0); continue; }
-        k.add(cylG(0.009, 0.009, 1.27, 6), MAT.brass, x, 1.78, 0.0);
+        if (Math.abs(x) < 0.42) { k.add(cylG(0.009, 0.009, 0.65, 8, true), MAT.brass, x, 2.08, 0.0); continue; }
+        k.add(cylG(0.009, 0.009, 1.27, 8, true), MAT.brass, x, 1.78, 0.0);
+        k.add(sphG(0.016, 8, 6), MAT.brass, x, 1.2, 0.0);                                    // pomito al pie de cada barrote
       }
-      k.add(rbox(0.9, 0.04, 0.06, 0.01), MAT.brass, 0, 1.75, 0.0);
-      k.add(rbox(0.04, 0.62, 0.06, 0.01), MAT.brass, -0.44, 1.44, 0.0);
-      k.add(rbox(0.04, 0.62, 0.06, 0.01), MAT.brass, 0.44, 1.44, 0.0);
-      k.add(rbox(0.8, 0.03, 0.3, 0.01), MAT.marble, 0, 1.13, 0.22);
+      k.add(sbox(0.9, 0.04, 0.06, 0.01), MAT.brass, 0, 1.75, 0.0);
+      k.add(sbox(0.04, 0.62, 0.06, 0.01), MAT.brass, -0.44, 1.44, 0.0);
+      k.add(sbox(0.04, 0.62, 0.06, 0.01), MAT.brass, 0.44, 1.44, 0.0);
+      k.add(sbox(0.8, 0.03, 0.3, 0.01), MAT.marble, 0, 1.13, 0.22);
       // side walls + back wall
-      k.add(rbox(0.08, 2.65, 1.6, 0.02), MAT.woodDark, -W / 2 - 0.04, 1.32, -0.75);
-      k.add(rbox(0.08, 2.65, 1.6, 0.02), MAT.woodDark, W / 2 + 0.04, 1.32, -0.75);
-      k.add(rbox(W + 0.16, 2.65, 0.08, 0.02), std(0x2a1a12, 0.8), 0, 1.32, -1.55);
+      k.add(sbox(0.08, 2.65, 1.6, 0.02), MAT.woodDark, -W / 2 - 0.04, 1.32, -0.75);
+      k.add(sbox(0.08, 2.65, 1.6, 0.02), MAT.woodDark, W / 2 + 0.04, 1.32, -0.75);
+      k.add(sbox(W + 0.16, 2.65, 0.08, 0.02), std(0x2a1a12, 0.8), 0, 1.32, -1.55);
       // safe and cash
-      k.add(rbox(0.7, 0.9, 0.5, 0.03, 2), std(0x2c3238, 0.35, 0.4), W / 2 - 0.6, 0.45, -1.2);
-      k.add(cylG(0.08, 0.08, 0.03, 12), MAT.chrome, W / 2 - 0.6, 0.55, -0.94, PI / 2);
-      k.add(rbox(1.2, 0.04, 0.4, 0.01), MAT.wood, -0.6, 1.2, -1.3);
+      k.add(sbox(0.7, 0.9, 0.5, 0.03, 2), std(0x2c3238, 0.35, 0.4), W / 2 - 0.6, 0.45, -1.2);
+      k.add(rcylG(0.08, 0.08, 0.03, 24, 0.01), MAT.chrome, W / 2 - 0.6, 0.55, -0.94, PI / 2);
+      k.add(sbox(0.05, 0.16, 0.03, 0.012), MAT.chrome, W / 2 - 0.36, 0.5, -0.94);           // manija
+      k.add(sbox(1.2, 0.04, 0.4, 0.01), MAT.wood, -0.6, 1.2, -1.3);
       var bill = std(0x3f8a4a, 0.8);
       for (var s = 0; s < 6; s++) k.add(boxG(0.16, 0.04 + (s % 3) * 0.02, 0.08), bill, -1.05 + s * 0.18, 1.24 + (s % 3) * 0.01, -1.3);
       var cc = [0xd4423f, 0x2a6fd6, 0x15171a, 0xd9a84a];
@@ -1309,7 +1452,7 @@
   // PLANT
   // ==================================================================
   /**
-   * makePlant(opts) -> Group  (palm ~700 tris / bush ~500 tris, 3-4 draw calls)
+   * makePlant(opts) -> Group  (palm ~900 tris / bush ~700 tris, 3-4 draw calls)
    * opts: { kind:'palm'|'bush', scale:1, blob }
    */
   function makePlant(opts) {
@@ -1317,12 +1460,12 @@
     var g = new T.Group();
     var leaf = std(0x2f7a3a, 0.75, 0, 0x061206), leaf2 = std(0x3f9a48, 0.75, 0, 0x081a08);
     inst(cachedParts('plant|' + kind, function (k) {
-      var pts = [new T.Vector2(0.001, 0), new T.Vector2(0.17, 0), new T.Vector2(0.2, 0.05), new T.Vector2(0.24, 0.42), new T.Vector2(0.27, 0.46), new T.Vector2(0.25, 0.48)];
-      k.add(new T.LatheGeometry(pts, 10), MAT.brass, 0, 0, 0);
-      k.add(cylG(0.235, 0.235, 0.02, 10), std(0x2a1a10, 1), 0, 0.44, 0);
+      // maceta torneada: pie, panza, cintura y borde enrollado (paso 2)
+      k.add(latheG('pot', [[0, 0], [0.15, 0], [0.165, 0.01], [0.16, 0.03], [0.18, 0.06], [0.22, 0.16], [0.24, 0.3], [0.235, 0.38], [0.225, 0.41], [0.25, 0.43], [0.272, 0.452], [0.27, 0.472], [0.25, 0.482], [0.235, 0.47], [0.232, 0.43]], 22), MAT.brass, 0, 0, 0);
+      k.add(latheG('soil', [[0.236, 0], [0.12, 0.025], [0, 0.03]], 22), std(0x2a1a10, 1), 0, 0.43, 0);
       if (kind === 'palm') {
-        k.add(cylG(0.035, 0.05, 0.9, 6), std(0x6a4a2a, 0.9), 0, 0.88, 0, 0.05, 0, 0.04);
-        k.add(cylG(0.03, 0.035, 0.5, 6), std(0x6a4a2a, 0.9), 0.04, 0.75, 0.02, -0.3, 0, -0.25);
+        k.add(cylG(0.035, 0.05, 0.9, 8), std(0x6a4a2a, 0.9), 0, 0.88, 0, 0.05, 0, 0.04);
+        k.add(cylG(0.03, 0.035, 0.5, 8), std(0x6a4a2a, 0.9), 0.04, 0.75, 0.02, -0.3, 0, -0.25);
         var n = 9;
         for (var i = 0; i < n; i++) {
           var a = i / n * TAU, droop = 0.9 + (i % 3) * 0.25, len = 0.75 + (i % 2) * 0.15;
@@ -1349,7 +1492,7 @@
   // CHANDELIER
   // ==================================================================
   /**
-   * makeChandelier(opts) -> Group  (~1,800 tris, 3 draw calls + optional light)
+   * makeChandelier(opts) -> Group  (~4,600 tris, 3 draw calls + optional light)
    * Origin = ceiling hook; hangs ~1.1 m down. Diameter 1.2 m.
    * opts: { light:false, intensity:0.9, distance:12, color:0xffd9a0 }
    * api: update(dt) (gentle twinkle), light (PointLight|null)
@@ -1360,20 +1503,20 @@
     var crystal = cache(_mats, 'crystal', function () { return new T.MeshStandardMaterial({ color: 0xfff6e8, roughness: 0.1, metalness: 0.2, emissive: 0x6a5a40, flatShading: true }); });
     var flameMat = new T.MeshBasicMaterial({ color: 0xffe2a0 });
     var meshes = inst(cachedParts('chandelier', function (k) {
-      k.add(cylG(0.12, 0.08, 0.05, 12), MAT.brass, 0, -0.025, 0);
-      k.add(cylG(0.012, 0.012, 0.4, 6), MAT.brass, 0, -0.25, 0);
-      k.add(sphG(0.07, 10, 8), MAT.brass, 0, -0.48, 0);
-      k.add(cylG(0.03, 0.09, 0.25, 10), MAT.brass, 0, -0.65, 0);
-      k.add(torG(0.55, 0.02, 5, 32), MAT.brass, 0, -0.78, 0, PI / 2);
-      k.add(torG(0.32, 0.018, 5, 24), MAT.brass, 0, -0.62, 0, PI / 2);
-      k.add(sphG(0.06, 10, 8), MAT.brass, 0, -0.85, 0);
+      k.add(rcylG(0.12, 0.08, 0.05, 16, 0.012), MAT.brass, 0, -0.025, 0);
+      k.add(cylG(0.012, 0.012, 0.4, 8), MAT.brass, 0, -0.25, 0);
+      k.add(sphG(0.07, 14, 10), MAT.brass, 0, -0.48, 0);
+      k.add(latheG('chcore', [[0, 0], [0.09, 0], [0.085, 0.03], [0.06, 0.1], [0.035, 0.2], [0.03, 0.25], [0, 0.25]], 16), MAT.brass, 0, -0.775, 0);
+      k.add(torG(0.55, 0.02, 8, 40), MAT.brass, 0, -0.78, 0, PI / 2);
+      k.add(torG(0.32, 0.018, 8, 32), MAT.brass, 0, -0.62, 0, PI / 2);
+      k.add(sphG(0.06, 14, 10), MAT.brass, 0, -0.85, 0);
       var n = 8;
       for (var i = 0; i < n; i++) {
         var a = i / n * TAU, c = Math.cos(a), s = Math.sin(a);
-        k.add(cylG(0.01, 0.01, 0.55, 5), MAT.brass, c * 0.27, -0.75, s * 0.27, 0, -a, PI / 2 - 0.25);
-        k.add(cylG(0.04, 0.02, 0.04, 8), MAT.brass, c * 0.55, -0.76, s * 0.55);
-        k.add(cylG(0.014, 0.014, 0.1, 6), MAT.ivory, c * 0.55, -0.69, s * 0.55);
-        k.add(sphG(0.032, 6, 5), 'FLAME', c * 0.55, -0.62, s * 0.55, 0, 0, 0, 1, 1.4, 1);
+        k.add(cylG(0.01, 0.01, 0.55, 8), MAT.brass, c * 0.27, -0.75, s * 0.27, 0, -a, PI / 2 - 0.25);
+        k.add(latheG('chcup', [[0, 0], [0.02, 0], [0.03, 0.01], [0.042, 0.035], [0.04, 0.042], [0, 0.04]], 12), MAT.brass, c * 0.55, -0.78, s * 0.55);
+        k.add(cylG(0.014, 0.014, 0.1, 10), MAT.ivory, c * 0.55, -0.69, s * 0.55);
+        k.add(sphG(0.032, 8, 6), 'FLAME', c * 0.55, -0.62, s * 0.55, 0, 0, 0, 1, 1.4, 1);
         for (var d = 0; d < 3; d++) {
           var a2 = a + (d - 1) * 0.13, r2 = 0.55 + (d === 1 ? 0 : -0.02);
           k.add(new T.OctahedronGeometry(0.03, 0), crystal, Math.cos(a2 + 0.39) * r2, -0.86 - (d === 1 ? 0.05 : 0), Math.sin(a2 + 0.39) * r2, 0, 0, 0, 1, 1.8, 1);
@@ -1616,7 +1759,7 @@
     var h = opts.h || 3.5;
     var parts = cache(_geos, 'pilaster|' + h, function () {
       var W = [], G = [];
-      function add(list, w, hh, d, x, y, z) { list.push({ geo: boxG(w, hh, d), m: mtx(x, y, z) }); }
+      function add(list, w, hh, d, x, y, z) { list.push({ geo: sbox(w, hh, d, Math.min(0.02, Math.min(w, hh, d) * 0.3)), m: mtx(x, y, z) }); } // cantos redondeados (paso 2)
       add(W, 0.44, 0.92, 0.1, 0, 0.46, 0.05);                       // zócalo (tapa el del muro)
       add(W, 0.34, h - 1.3, 0.06, 0, 0.92 + (h - 1.3) / 2, 0.03);   // fuste
       add(W, 0.4, 0.2, 0.09, 0, h - 0.28, 0.045);                   // capitel
@@ -1650,14 +1793,14 @@
       var step = L / (P - 1);
       for (var i = 0; i < P; i++) {
         var x = -L / 2 + i * step;
-        k.add(cylG(0.16, 0.18, 0.04, 14), MAT.brass, x, 0.02, 0);
-        k.add(cylG(0.13, 0.16, 0.03, 14), MAT.brass, x, 0.055, 0);
-        k.add(cylG(0.025, 0.03, 0.9, 10), MAT.brass, x, 0.5, 0);
-        k.add(sphG(0.05, 10, 8), MAT.brass, x, 0.98, 0);
-        k.add(torG(0.03, 0.008, 4, 10), MAT.brass, x, 0.9, 0);
+        k.add(latheG('ropebase', [[0, 0], [0.18, 0], [0.185, 0.012], [0.175, 0.03], [0.15, 0.045], [0.13, 0.06], [0.06, 0.075], [0.035, 0.1], [0, 0.1]], 20), MAT.brass, x, 0, 0);
+        k.add(cylG(0.025, 0.03, 0.85, 12, true), MAT.brass, x, 0.5, 0);
+        k.add(torG(0.032, 0.008, 6, 14), MAT.brass, x, 0.88, 0, PI / 2);
+        k.add(sphG(0.05, 14, 10), MAT.brass, x, 0.98, 0);
+        k.add(torG(0.03, 0.008, 6, 14), MAT.brass, x, 0.9, 0);
         if (i < P - 1) {
           var curve = new T.QuadraticBezierCurve3(new T.Vector3(x + 0.03, 0.9, 0), new T.Vector3(x + step / 2, 0.55, 0), new T.Vector3(x + step - 0.03, 0.9, 0));
-          k.add(new T.TubeGeometry(curve, 14, 0.022, 6, false), MAT.velvet, 0, 0, 0);
+          k.add(new T.TubeGeometry(curve, 18, 0.022, 8, false), MAT.velvet, 0, 0, 0);
         }
       }
     }), g);
@@ -2060,7 +2203,11 @@
     // helpers for the game
     materials: MAT,               // shared brass/chrome/wood/... (getters return cached materials)
     std: std, basic: basic,       // cached material makers
-    roundedBox: rbox,             // cached bevelled box geometry
+    roundedBox: sbox,             // caja con cantos redondeados (paso 2: normales suaves; la fachada sigue con rbox)
+    roundedBoxFlat: rbox,         // la caja biselada de antes (canto en chanfle)
+    latheGeometry: latheG,        // torno cacheado: latheGeometry(clave, [[r, y], ...], lados)
+    roundedCylinder: rcylG,       // cilindro con cantos redondeados
+    soften: soften,               // ablanda listas de piezas hechas con caja/cilindro unitarios (shop.js, owner.js)
     canvasTex: canvasTex,
     addBlob: addBlob,             // contact-shadow quad
     mergeGeometries: mergeGeos,
