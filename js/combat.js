@@ -157,20 +157,28 @@ const mat = {
   flash: new T.SpriteMaterial({ map: A.canvasTex(64, 64, g => { const r = g.createRadialGradient(32, 32, 2, 32, 32, 30); r.addColorStop(0, "#fff8d0"); r.addColorStop(0.35, "#ffb030"); r.addColorStop(1, "rgba(255,120,0,0)"); g.fillStyle = r; g.fillRect(0, 0, 64, 64); }), blending: T.AdditiveBlending, depthWrite: false, transparent: true }),
   spark: new T.SpriteMaterial({ map: A.canvasTex(64, 64, g => { const r = g.createRadialGradient(32, 32, 1, 32, 32, 30); r.addColorStop(0, "#ffffff"); r.addColorStop(0.3, "#ffd070"); r.addColorStop(1, "rgba(255,160,40,0)"); g.fillStyle = r; g.fillRect(0, 0, 64, 64); }), blending: T.AdditiveBlending, depthWrite: false, transparent: true }),
 };
-const vm = new T.Group(); vm.visible = false; vm.scale.setScalar(0.68); camera.add(vm);
+const vm = new T.Group(); vm.name = "weaponView"; vm.visible = false; vm.scale.setScalar(0.68); camera.add(vm);
+// mano/brazo de Kenney (el mismo de las manos del dueño, con la textura de su ropa: people.js). Muñeca en el origen,
+// la mano hacia -Z con el pulgar arriba (así abraza un mango vertical) y el antebrazo hacia +Z. Si el modelo no está, un bloque.
+function kenneyArm(side, x, y, z, rz, part) {
+  const P = window.CasinoPeople, geo = P && P.armGeometry ? P.armGeometry(side, part || "fore") : null;
+  const m = geo ? new T.Mesh(geo, P.fpMaterial()) : new T.Mesh(new T.BoxGeometry(0.075, 0.09, 0.075), mat.skin);
+  if (geo) { m.scale.setScalar(0.91); m.frustumCulled = false; m.rotation.z = rz || 0; }
+  m.position.set(x, y, z); return m;
+}
 const models = {};
 { // cuchillo
   const g = new T.Group();
   const blade = new T.Mesh(new T.BoxGeometry(0.03, 0.24, 0.008), mat.steel); blade.position.y = 0.17; g.add(blade);
   const hdl = new T.Mesh(new T.BoxGeometry(0.034, 0.12, 0.034), mat.dark); hdl.position.y = 0.0; g.add(hdl);
-  const hand = new T.Mesh(new T.BoxGeometry(0.075, 0.09, 0.075), mat.skin); hand.position.y = -0.02; g.add(hand);
+  g.add(kenneyArm(1, 0.0, -0.03, 0.06, 0, "fist"));
   models.knife = g;
 }
 { // bate
   const g = new T.Group();
   const b = new T.Mesh(new T.CylinderGeometry(0.04, 0.014, 0.82, 10), mat.wood); b.position.y = 0.34; g.add(b);
   const knob = new T.Mesh(new T.SphereGeometry(0.022, 8, 6), mat.wood); knob.position.y = -0.07; g.add(knob);
-  const hand = new T.Mesh(new T.BoxGeometry(0.08, 0.1, 0.08), mat.skin); hand.position.y = 0.0; g.add(hand);
+  g.add(kenneyArm(1, 0.0, -0.01, 0.06, 0, "fist"));
   models.bat = g;
 }
 { // pistola
@@ -178,7 +186,7 @@ const models = {};
   const body = new T.Mesh(new T.BoxGeometry(0.05, 0.07, 0.22), mat.dark); body.position.set(0, 0.02, -0.08); g.add(body);
   const barrel = new T.Mesh(new T.BoxGeometry(0.028, 0.028, 0.1), mat.steel); barrel.position.set(0, 0.03, -0.24); g.add(barrel);
   const grip = new T.Mesh(new T.BoxGeometry(0.044, 0.11, 0.05), mat.grip); grip.position.set(0, -0.05, 0.0); grip.rotation.x = 0.2; g.add(grip);
-  const hand = new T.Mesh(new T.BoxGeometry(0.07, 0.09, 0.08), mat.skin); hand.position.set(0, -0.06, 0.01); g.add(hand);
+  g.add(kenneyArm(1, 0.0, -0.065, 0.07, 0, "fist"));
   const fl = new T.Sprite(mat.flash); fl.scale.set(0.22, 0.22, 1); fl.position.set(0, 0.03, -0.32); fl.visible = false; g.add(fl); g.userData.flash = fl;
   models.pistol = g;
 }
@@ -186,9 +194,7 @@ const models = {};
   const g = new T.Group();
   for (const sx of [-1, 1]) {
     const f = new T.Group(); f.position.x = sx * 0.16;
-    const fist = new T.Mesh(new T.BoxGeometry(0.1, 0.09, 0.11), mat.skin); f.add(fist);
-    const knuckles = new T.Mesh(new T.BoxGeometry(0.1, 0.03, 0.03), mat.skin); knuckles.position.set(0, 0.045, -0.04); f.add(knuckles);
-    const arm = new T.Mesh(new T.BoxGeometry(0.075, 0.075, 0.24), mat.dark); arm.position.z = 0.16; f.add(arm);
+    f.add(kenneyArm(sx, 0, 0.11, 0.08, sx * 0.55, "fist")); // puño de Kenney con el antebrazo (manga de la ropa del dueño)
     g.add(f); g.userData[sx < 0 ? "l" : "r"] = f;
   }
   models.fists = g;
