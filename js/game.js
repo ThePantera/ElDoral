@@ -2874,7 +2874,7 @@ function start(hotData) {
   } else {
     $("titleKeys").innerHTML = `<kbd>WASD</kbd><span>Caminar (Shift para correr)</span><kbd>Mouse</kbd><span>Mirar</span><kbd>E</kbd><span>Usar · mantené para vaciar cajas y depositar</span><kbd>R</kbd><span>Opciones de lo que mirás: pago, vender</span><kbd>P K O</kbd><span>Personal · Banco · Objetivos</span><kbd>H M</kbd><span>Historia · Sonido</span><kbd>1 2 3 · N</kbd><span>Velocidad · abrir ya</span><kbd>U</kbd><span>Licencias y mejoras</span><kbd>G</kbd><span>Soltar la caja que llevás</span><kbd>L</kbd><span>Logros y ranking</span><kbd>F</kbd><span>Puños o arma en mano (las armas se compran en la compu) · clic: atacar</span><kbd>Esc</kbd><span>Menú y pausa</span>`;
   }
-  if (window.innerWidth < 560 || window.innerHeight < 460) { $("hud").classList.add("compact"); $("hudToggle").textContent = "Más"; }
+  $("hud").classList.add("compact"); $("hudToggle").textContent = "Más";
   const text = (hotData && hotData.save) || readSaveRaw();
   const res = sanitize(text);
   if (res && res.state) { loadState(res.state); hadSave = true; }
