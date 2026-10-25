@@ -288,27 +288,45 @@ function refreshAvatar() {
 }
 
 // --- mangas y manos en primera persona ---------------------------------------
+// Brazos de Kenney: el antebrazo y la mano recortados de la misma malla de las personas (people.js → armGeometry) con la
+// textura del look del dueño (manga del color de la ropa, puño de la camisa, piel de la mano). Si el modelo todavía no
+// está, quedan los bloques de antes como respaldo. armMats.sleeve sigue con el color de la manga (lo lee visuals).
 const armMats = { sleeve: new T.MeshStandardMaterial({ color: 0x3a5a8a, roughness: 0.8 }), cuff: new T.MeshStandardMaterial({ color: 0xf6f1e6, roughness: 0.7 }), skin: new T.MeshStandardMaterial({ color: 0xd9a074, roughness: 0.75 }), gold: A.std(0xd9a84a, 0.25, 0.85) };
 const arms = new T.Group(); arms.name = "ownerArms";
 const armParts = [];
+const FP_ARM = 0.62;   // escala del brazo de Kenney en la vista (la persona mide ~1,93 m)
 for (const side of [-1, 1]) {
   const a = new T.Group();
-  const sl = new T.Mesh(CYL1, armMats.sleeve); sl.scale.set(0.085, 0.34, 0.085); sl.rotation.x = Math.PI / 2; sl.position.set(0, -0.015, 0.19); a.add(sl);
-  const cf = new T.Mesh(CYL1, armMats.cuff); cf.scale.set(0.079, 0.035, 0.079); cf.rotation.x = Math.PI / 2; cf.position.set(0, -0.012, 0.03); a.add(cf);
-  const hd = new T.Mesh(BOX1, armMats.skin); hd.scale.set(0.075, 0.04, 0.1); hd.position.set(0, -0.012, -0.03); a.add(hd);
-  const th = new T.Mesh(BOX1, armMats.skin); th.scale.set(0.022, 0.024, 0.05); th.position.set(-side * 0.04, 0.0, -0.02); th.rotation.y = side * 0.4; a.add(th);
-  const wt = new T.Mesh(CYL1, armMats.gold); wt.scale.set(0.084, 0.022, 0.084); wt.rotation.x = Math.PI / 2; wt.position.set(0, -0.012, 0.06); wt.visible = false; a.add(wt);
-  a.position.set(side * 0.27, -0.25, -0.43); a.rotation.set(0.38, side * 0.22, side * 0.12);
-  a.userData = { side, cuff: cf, watch: wt, base: a.position.clone() };
+  const wt = new T.Mesh(CYL1, armMats.gold); wt.scale.set(0.056, 0.014, 0.05); wt.rotation.x = Math.PI / 2; wt.position.set(0, 0, 0.03); wt.visible = false; a.add(wt);
+  const cf = new T.Group(); a.add(cf);   // el puño de la camisa ya viene en la textura (queda para la API de antes)
+  a.position.set(side * 0.24, -0.27, -0.42); a.rotation.set(0.22, side * 0.18, 0);
+  a.userData = { side, cuff: cf, watch: wt, base: a.position.clone(), mesh: null };
   arms.add(a); armParts.push(a);
 }
 G.camera.add(arms);
+function ensureArmMeshes() {
+  const P = window.CasinoPeople;
+  for (const a of armParts) {
+    if (a.userData.mesh) continue;
+    const geo = P && P.armGeometry && P.armGeometry(a.userData.side);
+    if (!geo) continue;
+    const m = new T.Mesh(geo, P.fpMaterial()); m.name = "ownerArm"; m.scale.setScalar(FP_ARM); m.rotation.z = a.userData.side * Math.PI / 2; m.frustumCulled = false; // palma abajo, pulgar hacia adentro
+    a.add(m); a.userData.mesh = m;
+  }
+}
+// la caja que llevás: la malla colgada de la cámara que no es de las manos ni del arma ni el vaso (shop.js liftBox)
+function carriedBox() {
+  let best = null;
+  for (const c of G.camera.children) if (c !== arms && c.name !== "weaponView" && c.visible && c.position.z < -0.5 && (!best || c.scale.x > best.scale.x)) best = c;
+  return best;
+}
 function refreshArms() {
   const o = OW(), f = OUT(o.outfit) || O.outfits[0];
   armMats.sleeve.color.setHex(f.vip ? f.jacket : f.color);
-  for (const a of armParts) { a.userData.cuff.visible = !!f.cuff; if (f.cuff) armMats.cuff.color.setHex(f.cuff); a.userData.watch.visible = !!o.own.reloj && a.userData.side < 0; }
-  // remera de manga corta: la "manga" es piel
+  for (const a of armParts) { a.userData.watch.visible = !!o.own.reloj && a.userData.side < 0; }
   if (!f.vip && f.top === "tee") armMats.sleeve.color.setHex(f.color);
+  ensureArmMeshes();
+  if (avatar && window.CasinoPeople && window.CasinoPeople.setFPLook) window.CasinoPeople.setFPLook(avatar.userData.personLook);
 }
 
 // --- retrato al óleo (arriba de la compu) -----------------------------------
@@ -1045,10 +1063,20 @@ function frame(real) {
   if (office.acuario.visible) for (const f of fish) { f.ph += real * f.sp; const x = Math.sin(f.ph) * 0.2, z = Math.cos(f.ph * 0.7) * 0.1; f.m.position.set(x, f.y + Math.sin(f.ph * 1.7) * 0.03, z); f.m.rotation.y = Math.cos(f.ph) > 0 ? 0 : Math.PI; }
   // manos
   const shop = window.CasinoShop, build = window.CasinoBuild;
-  arms.visible = G.started && !G.ui.blocking() && !(shop && shop.carrying) && !(build && build.active);
+  const wv = G.camera.getObjectByName("weaponView");
+  arms.visible = G.started && !G.ui.blocking() && !(build && build.active) && !(wv && wv.visible);
   if (arms.visible) {
     const br = Math.sin(t * 1.6) * 0.004;
-    for (const a of armParts) { const b = a.userData.base; a.position.set(b.x, b.y + br, b.z); if (a.userData.side > 0 && G.player.drink) a.position.set(0.2, -0.27, -0.42); }
+    const box = shop && shop.carrying ? carriedBox() : null;
+    for (const a of armParts) {
+      const b = a.userData.base, sd = a.userData.side;
+      a.position.set(b.x, b.y + br, b.z); a.rotation.set(0.22, sd * 0.18, 0);
+      if (box) { // agarrando la caja de los costados, un poco por debajo de la mitad
+        const hw = box.scale.x / 2, hh = box.scale.y / 2; void hh;
+        a.position.set(box.position.x + sd * (hw + 0.02), box.position.y + hh * 0.7, box.position.z + box.scale.z * 0.5 + 0.04);
+        a.rotation.set(0.15, -sd * 0.12, -sd * Math.PI / 2 * 0.9);   // palmas contra los costados de la caja
+      } else if (sd > 0 && G.player.drink) a.position.set(0.2, -0.27, -0.42);
+    }
   }
   // espejo: se dibuja solo si estás cerca y mirando para ese lado
   const px = G.player.x - WARD.x, pz = G.player.z - WARD.z, dist = Math.hypot(px, pz);
