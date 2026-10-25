@@ -113,7 +113,7 @@ void main(){
   vec2 h = normalize(d.xz + 1e-5);
   float g = pow(max(dot(h, uGlowDir.xz), 0.0), 3.0) * (1.0 - smoothstep(-0.02, 0.5, y));
   c += uGlow * (uGlowK * (0.35 + 0.65 * g)) * (1.0 - smoothstep(0.0, 0.6, y));
-  gl_FragColor = vec4(c, 1.0);
+  gl_FragColor = vec4(c, 0.0); // alfa 0: el cielo no entra al halo (fx.js); la pantalla no usa el alfa
   #include <tonemapping_fragment>
   #include <encodings_fragment>
 }`;
@@ -138,7 +138,7 @@ varying vec3 vCol, vLight; varying vec4 vInfo; varying vec2 vUv; varying float v
 float hh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main(){
   vec3 col = vCol * vLight;
-  float mode = vInfo.w;
+  float mode = vInfo.w, glowA = 0.0; // alfa = cuánto brilla (fx.js: solo las ventanas prendidas de noche entran al halo)
   if (mode > 0.5) {
     vec2 sz = vInfo.yz, c = vUv / sz, id = floor(c), f = fract(c);
     float shop = (mode > 1.5 && vUv.y < sz.y) ? 1.0 : 0.0;
@@ -161,8 +161,9 @@ void main(){
     vec3 dayGlass = mix(uHor, uTop, f.y * 0.8) * (0.32 + 0.25 * r2) * clamp(vLight, 0.0, 1.5) + 0.01;
     vec3 glass = mix(dayGlass, vec3(0.010, 0.013, 0.02), uNight) + warm * on * mix(0.3, 1.45, uNight);
     col = mix(col, glass, m);
+    glowA = m * on * uNight * 0.25; // muchas ventanas juntas: medio brillo, si no la ciudad entera se empaña
   }
-  gl_FragColor = vec4(col, 1.0);
+  gl_FragColor = vec4(col, glowA);
   #ifdef FAR
     gl_FragColor.rgb = mix(gl_FragColor.rgb, uHor * 0.92, uFarK * smoothstep(uFarA, uFarB, vDist));
   #else

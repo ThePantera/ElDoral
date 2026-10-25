@@ -863,6 +863,7 @@
     // pantalla (canvas 1.5x para que se lea nítida; se dibuja en coords lógicas 256 x 160)
     var SC = 1.5, screenTex = canvasTex(256 * SC, 160 * SC, function (g) { g.scale(SC, SC); });
     var screenMat = new T.MeshBasicMaterial({ map: screenTex, toneMapped: false });
+    screenMat.userData.glow = 0.3; // fx.js: la pantalla es grande y clara: halo suave para que los rodillos se sigan leyendo
     var screen = new T.Mesh(planeG(0.64, 0.4), screenMat); screen.position.set(0, 1.45, 0.218); group.add(screen);
     // cartel
     var marqMat = new T.MeshBasicMaterial({ map: marqueeTex(def.name, color, model), toneMapped: false });

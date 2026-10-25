@@ -258,7 +258,10 @@ const _untoned = new WeakSet();
 function untone(root) {
   root.traverse(o => {
     const ms = o.material; if (!ms) return;
-    for (const m of Array.isArray(ms) ? ms : [ms]) if (!_untoned.has(m)) { _untoned.add(m); if ((m.isMeshBasicMaterial || m.isSpriteMaterial || m.isLineBasicMaterial) && m.toneMapped) { m.toneMapped = false; m.needsUpdate = true; } }
+    for (const m of Array.isArray(ms) ? ms : [ms]) if (!_untoned.has(m)) {
+      _untoned.add(m); if ((m.isMeshBasicMaterial || m.isSpriteMaterial || m.isLineBasicMaterial) && m.toneMapped) { m.toneMapped = false; m.needsUpdate = true; }
+      if (window.CasinoFX) window.CasinoFX.material(m); // paso 3: reflejos en los metales (fx.js)
+    }
   });
 }
 // Calidad gráfica: lo que más pesa es la cantidad de píxeles (pantallas de alta densidad),
@@ -266,7 +269,7 @@ function untone(root) {
 const GFX_KEY = "casino-dorado-graficos-v1";
 const GFX_MODES = { auto: "Automática", alta: "Alta", media: "Media", baja: "Baja" };
 let gfxLights = []; // luces decorativas que se apagan en calidad baja (cartel de la fachada)
-const gfx = { mode: "auto", fps: false, bob: true, scale: 1, avg: 1 / 60, t: 0, good: 0, shown: 0, frames: 0, acc: 0 };
+const gfx = { mode: "auto", fps: false, bob: true, scale: 1, avg: 1 / 60, t: 0, good: 0, shown: 0, frames: 0, acc: 0, fxOff: false, fxGood: 0 };
 try { const g = JSON.parse(localStorage.getItem(GFX_KEY) || "{}"); if (GFX_MODES[g.mode]) gfx.mode = g.mode; gfx.fps = !!g.fps; if (g.bob === false) gfx.bob = false; } catch (e) {}
 const DPR = window.devicePixelRatio || 1;
 function gfxMax() { return gfx.mode === "alta" ? Math.min(DPR, 2) : gfx.mode === "media" ? Math.min(DPR, 1) : gfx.mode === "baja" ? Math.min(DPR, 1) * 0.7 : Math.min(DPR, isTouch ? 1.5 : 1.75); }
@@ -275,10 +278,11 @@ function gfxApply() {
   if (Math.abs(renderer.getPixelRatio() - pr) > 0.01) renderer.setPixelRatio(pr);
   for (const l of gfxLights) l.visible = gfx.mode !== "baja";
   if (A.setLowFx) A.setLowFx(gfx.mode === "baja"); // halos y brillos falsos (art.js)
+  if (window.CasinoFX) window.CasinoFX.setOff(gfx.mode === "baja" || gfx.fxOff); // halo, viñeta y color (fx.js)
 }
 function gfxSave() { try { localStorage.setItem(GFX_KEY, JSON.stringify({ mode: gfx.mode, fps: gfx.fps, bob: gfx.bob })); } catch (e) {} }
 function gfxSet(mode) {
-  if (!GFX_MODES[mode]) return; gfx.mode = mode; gfx.scale = 1; gfx.good = 0; gfx.t = 0; gfxSave(); gfxApply();
+  if (!GFX_MODES[mode]) return; gfx.mode = mode; gfx.scale = 1; gfx.good = 0; gfx.t = 0; gfx.fxOff = false; gfx.fxGood = 0; gfxSave(); gfxApply();
   // perf.js elige el material y el suavizado de bordes al cargar: si cambian, se guarda y se recarga la página
   const P = window.CasinoPerf;
   if (P && ((mode !== "alta") !== P.fast || (mode !== "baja") !== P.antialias)) { toast("Aplicando los gráficos nuevos…"); if (started && !S.gameOver) save(true); setTimeout(() => location.reload(), 350); }
@@ -293,8 +297,10 @@ function gfxFrame(raw) {
   gfx.t += raw; if (gfx.t < 2) return; gfx.t = 0;
   const fps = 1 / gfx.avg;
   if (fps < 48 && gfxMax() * gfx.scale > 0.56) { gfx.scale = Math.max(0.55 / gfxMax(), gfx.scale * (fps < 32 ? 0.75 : 0.87)); gfx.good = 0; gfxApply(); }
+  else if (fps < 40 && !gfx.fxOff) { gfx.fxOff = true; gfx.fxGood = 0; gfxApply(); } // paso 3: ya en la resolución mínima y sigue lento: sin halo ni viñeta
   else if (fps > 58 && gfx.scale < 1) { if (++gfx.good >= 3) { gfx.scale = Math.min(1, gfx.scale * 1.1); gfx.good = 0; gfxApply(); } }
-  else gfx.good = 0;
+  else if (fps > 58 && gfx.fxOff) { if (++gfx.fxGood >= 3) { gfx.fxOff = false; gfx.fxGood = 0; gfxApply(); } } // anda sobrado: vuelve el brillo
+  else gfx.good = gfx.fxGood = 0;
 }
 const fpsEl = document.createElement("div"); fpsEl.id = "fpsMeter"; fpsEl.hidden = !gfx.fps;
 fpsEl.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);top:max(6px,env(safe-area-inset-top,0px));z-index:40;font:600 12px var(--font-num,monospace);color:#e9dcb8;background:rgba(7,20,15,.75);border:1px solid #6b5a2e;border-radius:4px;padding:2px 8px;pointer-events:none";
@@ -311,6 +317,8 @@ function resize() {
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 window.addEventListener("resize", resize);
+// paso 3: halo, viñeta y reflejos (fx.js). El posproceso sigue solo el tamaño del renderer (resize y resolución dinámica).
+if (window.CasinoFX) window.CasinoFX.init(renderer, scene, camera);
 
 // luces (cantidad fija: nunca se agregan luces en tiempo de juego)
 // paso 1: con la luz en lineal, el hemisferio (luz pareja) baja y los focos cálidos suben: más contraste
@@ -2847,7 +2855,7 @@ function tick(now) {
   }
   untoneT -= raw; if (untoneT <= 0) { untoneT = 0.5; untone(scene); } // objetos nuevos (muñecos, cajas, carteles)
   if (window.CasinoJuice) window.CasinoJuice.frame(real); // meta, monedas y festejos; va después de updateHud (juice.js)
-  if (renderOn) renderer.render(scene, camera);
+  if (renderOn && !(window.CasinoFX && window.CasinoFX.render(gfx.mode))) renderer.render(scene, camera); // fx.js: con halo y viñeta
   requestAnimationFrame(tick);
 }
 
@@ -3045,7 +3053,7 @@ window.casinoDebug = {
   inspect() { startInspection("prueba"); },
   use() { if (target) target.use(); }, options: openOptions,
   render(on) { renderOn = !!on; },
-  get gfx() { return { mode: gfx.mode, scale: gfx.scale, pr: renderer.getPixelRatio(), fps: Math.round(1 / gfx.avg) }; }, gfxSet,
+  get gfx() { return { mode: gfx.mode, scale: gfx.scale, pr: renderer.getPixelRatio(), fps: Math.round(1 / gfx.avg), fxOff: gfx.fxOff }; }, gfxSet,
   endDay, nextDay, openMgmt, closePanel: () => closePanel(true),
   fn: { buyBar, installBar, capOf, buyZone, catchThief, serveDrink, breakMachine, repairMachine, collectByPlayer, buyMachine, buyTable, hireStaff, fireStaff, takeLoan, staffMax, startInspection, bribeInspector, rollObjectives, sanitize, serialize, attractiveness, rivalMul, demandPerHour, findPath, Heat, Rank, spotById, sfx },
 };
