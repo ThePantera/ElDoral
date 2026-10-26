@@ -387,7 +387,7 @@ const ceil = new THREE.Mesh(new THREE.PlaneGeometry(44, 20, SEG(44), SEG(20)), r
 // techo artesonado: vigas con filetes dorados y un spot falso por casetón (casetones de 2,2 x 2 m, igual que la textura)
 const coffers = A.makeCofferedCeiling ? A.makeCofferedCeiling({ x0: -22, x1: 22, z0: -10, z1: 10, y: WALL_H, cx: 2.2, cz: 2.0 }) : null;
 if (coffers) { scene.add(coffers); animated.push({ update() { coffers.api.setOn(!(window.CasinoLife && window.CasinoLife.outage)); } }); } // apagón (life.js): spots apagados
-wall(0, 10, 44.3, true, 4);
+wall(-9.925, 10, 24.45, true, 4); wall(12.925, 10, 18.45, true, 4); // pared del fondo con un hueco entre x=2,3 y x=3,7 para la puerta de la oficina (office.js)
 wall(-12.5, -10, 19, true, 5); wall(12.5, -10, 19, true, 5);
 wall(-22, 0, 20, false, 1); wall(22, 0, 20, false, 0);
 const facade = A.makeFacade({ width: 14 }); facade.rotation.y = Math.PI; facade.position.set(0, 0, -10.16); scene.add(facade); animated.push(facade.api); gfxLights = (facade.api && facade.api.lights) || []; gfxApply();
@@ -417,7 +417,7 @@ if (A.makeEdgeShade) {
 if (A.makePilasters) {
   // separadas de carteles, puertas y muebles contra la pared (estantería VIP en x=-3, tablero en x=-9.3, barra, caja)
   const IN = 9.85, OX = 21.85, P = [];
-  for (const x of [-19.6, -13, -10, -4.4, 3.4, 10, 13, 19.6]) P.push({ x, z: IN, ry: Math.PI });
+  for (const x of [-19.6, -13, -10, -4.4, 4.6, 10, 13, 19.6]) P.push({ x, z: IN, ry: Math.PI });
   for (const x of [-19.6, -13, -10, 10, 13, 19.6]) P.push({ x, z: -IN, ry: 0 });
   for (const z of [-6.6, 1.2, 6.4]) { P.push({ x: -OX, z, ry: Math.PI / 2 }); P.push({ x: OX, z, ry: -Math.PI / 2 }); }
   scene.add(A.makePilasters(P, { h: WALL_H }));
@@ -1412,6 +1412,7 @@ function despawnCustomer(c) {
   if (window.CasinoLife) window.CasinoLife.onDespawn(c);
   if (window.CasinoCombat) window.CasinoCombat.onDespawn(c);
   if (window.CasinoOwner) window.CasinoOwner.onDespawn(c); // banda del robo y sospechosos (owner.js)
+  if (window.CasinoOffice) window.CasinoOffice.onDespawn(c);
   if (window.CasinoShop) window.CasinoShop.onDespawn(c);
   if (window.CasinoClients) window.CasinoClients.onDespawn(c);
   releaseGame(c);
@@ -1423,6 +1424,7 @@ function despawnCustomer(c) {
 function updateCustomer(c, dt) {
   const p = c.person;
   if (c.cmb && window.CasinoCombat && window.CasinoCombat.actor(c, dt)) return; // peleas, heridos y fuga por disparos (combat.js)
+  if (c.off && window.CasinoOffice && window.CasinoOffice.actor(c, dt)) return; // traído a la oficina por seguridad (office.js)
   if (c.owner && window.CasinoOwner && window.CasinoOwner.actor(c, dt)) return; // robo planeado, sospechosos e influencer (owner.js)
   if (c.life && window.CasinoLife && window.CasinoLife.actor(c, dt)) return; // actores de los eventos (life.js)
   if ((c.shop || c.shopPlan) && window.CasinoShop && window.CasinoShop.actor(c, dt)) return; // kiosco y caja registradora (shop.js)
@@ -1625,6 +1627,8 @@ function updateStaffNpc(n, dt) {
   if (n.person && n.person.bat && n.person.bat.visible && (n.state !== "bonk" || n.lifeTask)) { n.person.bat.visible = false; if (n.state === "bonk") { n.state = "patrol"; n.bonk = null; } }
   if (n.lifeTask && window.CasinoLife && window.CasinoLife.staffTask(n, dt)) return; // guardia o técnico atendiendo un evento (life.js)
   if (n.ownerTask && window.CasinoOwner && window.CasinoOwner.staffTask(n, dt)) return; // guardia frenando el robo (owner.js)
+  if (n.offTask && window.CasinoOffice && window.CasinoOffice.staffTask(n, dt)) return; // guardia con una orden del walkie-talkie (office.js)
+  if (n.off && window.CasinoOffice && window.CasinoOffice.actor(n, dt)) return; // empleado traído a la oficina (office.js)
   const def = n.def, p = n.person, sp = (def.speed || 2.8) * (n.effMul || 1) * UPV("staffSpeedMul", 1) * (window.CasinoOwner ? window.CasinoOwner.staffSpeedMul() : 1); // effMul y taskMul: eficiencia del empleado (staff.js)
   switch (n.role) {
     case "tech": {
@@ -2103,6 +2107,7 @@ function endDay() {
   window.CasinoStory?.onEndDay?.(notes); // misiones de la historia (story.js)
   window.CasinoClients?.onEndDay?.(notes); // socios y torneo de póker (clients.js)
   window.CasinoVip?.onEndDay?.(notes); // salón ultra VIP: sueldos de las acompañantes, rumores y resumen (vip.js)
+  window.CasinoOffice?.onEndDay?.(notes); // precio del lingote de oro (office.js)
   window.CasinoDaily?.onEndDay?.(); // ganancia del día para "mientras no estabas" (daily.js)
   S.totals.days++; S.totals.net += st.net;
   T.end = S.bank; T.heatEnd = S.heat; T.repEnd = S.rep;
@@ -2213,6 +2218,7 @@ function sanitize(text) {
   if (raw.combat && typeof raw.combat === "object" && !Array.isArray(raw.combat)) s.combat = raw.combat; // armas, daños y la Mafia: combat.js lo valida campo por campo
   if (raw.daily && typeof raw.daily === "object" && !Array.isArray(raw.daily)) s.daily = raw.daily; // premio del día y racha: daily.js lo valida campo por campo
   if (raw.vip && typeof raw.vip === "object" && !Array.isArray(raw.vip)) s.vip = raw.vip; // salón ultra VIP (+18): vip.js lo valida campo por campo
+  if (raw.office && typeof raw.office === "object" && !Array.isArray(raw.office)) s.office = raw.office; // oficina de seguridad: office.js lo valida campo por campo
   if (raw.life && typeof raw.life === "object") s.life = { day: int(raw.life.day, 0, 0, 1e6), fired: int(raw.life.fired, 0, 0, 9) }; // eventos ya ocurridos hoy (life.js)
   return { state: s };
 }
@@ -2804,6 +2810,7 @@ function simStep(dt) {
   if (window.CasinoClients) window.CasinoClients.update(dt); // socios y torneo de póker (clients.js)
   if (window.CasinoCombat) window.CasinoCombat.update(dt); // peleas, sangre y el ataque de la Mafia (combat.js)
   window.CasinoVip?.update?.(dt); // clientes y reservado del salón ultra VIP (vip.js)
+  window.CasinoOffice?.update?.(dt); // contadora, órdenes del walkie-talkie y puerta blindada (office.js)
   if (S.minutes >= CFG.dayEnd * 60) { S.minutes = CFG.dayEnd * 60; endDay(); }
 }
 let prev = performance.now(), renderOn = true, pulseT = 0, untoneT = 0;
@@ -2838,6 +2845,7 @@ function tick(now) {
   if (window.CasinoShop) window.CasinoShop.frame(real);
   if (window.CasinoOwner) window.CasinoOwner.frame(real); // espejo, manos, auto, acuario (owner.js)
   window.CasinoVip?.frame?.(real); // baile y luces del salón ultra VIP (vip.js)
+  window.CasinoOffice?.frame?.(real); // monitores de cámaras en vivo y modo monitor (office.js)
   if (window.CasinoWorld) window.CasinoWorld.frame(real); // cielo, lluvia y relámpagos (world.js)
   if (window.CasinoGames) window.CasinoGames.frame(real);
   if (window.CasinoCombat) window.CasinoCombat.frame(real); // arma en mano, golpes, cámara al caer (combat.js)
@@ -3037,6 +3045,17 @@ window.CasinoCombatBridge = {
   Economy, Rep, Heat, Rank, SFX, sfx, toast, hint, fmt, floatText, setIcon, setBar, save, updateHud, openPanel, closePanel,
   proxy, dropProxy, findPath, goTo, stepAgent, placeAgent, faceTo, turnToward, streetPoint, leaveCustomer, despawnCustomer, releaseGame, breakMachine, repairMachine,
   fireNpc, assignDealers, acquirePerson, releasePerson, blocked, backHome, idleOf, near, attractiveness,
+};
+
+// =====================================================================
+// OFICINA DE SEGURIDAD (puente) — office.js: cámaras en vivo, puerta blindada, bodega de lingotes y walkie-talkie
+// =====================================================================
+window.CasinoOfficeBridge = {
+  get S() { return S; }, get isOpen() { return isOpen; }, get started() { return started; },
+  D, CFG, HOUR, DOOR, KEY, isTouch, scene, camera, renderer, ui, player, customers, staffNpcs, machines, tables, WALL_H,
+  Economy, Pocket, Rank, Rep, SFX, sfx, toast, hint, fmt, floatText, setIcon, setBar, save, updateHud, openPanel, closePanel, releasePointer, requestPointer, useUp,
+  proxy, dropProxy, boxAt, removeCollider, findPath, goTo, stepAgent, placeAgent, faceTo, backHome, releaseGame, releaseNpcTask, assignDealers, catchThief, zoneOpen, streetPoint, near,
+  get glass() { return glass; },
 };
 
 // gancho para pruebas automáticas (no afecta el juego)

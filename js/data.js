@@ -663,3 +663,51 @@
     dresses: [0x8e1f26, 0x15151c, 0x5a1f6e, 0xb8325a, 0x1f3a6e, 0xd9a84a, 0x0f5a4a, 0x6a0f1f],
   };
 })();
+
+// ---------------------------------------------------------------
+// OFICINA DE SEGURIDAD (office.js): cámaras en vivo, mesa con contadora, puerta blindada, bodega de lingotes y walkie-talkie.
+//  Detrás de la pared del fondo del salón principal (a la derecha de la estantería). Las cámaras NO pueden estar ni apuntar a la sala ultra VIP.
+// ---------------------------------------------------------------
+(() => {
+  const CATS = window.CASINO_DATA.CATS;
+  Object.assign(CATS, {
+    officeBuild: "Oficina de seguridad: obra", officeCam: "Oficina: cámaras de seguridad", officeProp: "Oficina: objetos",
+    goldBuy: "Lingotes de oro: compra", goldSell: "Lingotes de oro: venta",
+  });
+  window.CASINO_DATA.OFFICE = {
+    rank: 3,                      // Croupier
+    buildCost: 6000,              // obra de la oficina (paredes, mesa, contadora, monitores, bodega y puerta blindada)
+    cams: {
+      free: 2, max: 8, price: 450, refund: 0.5,   // dos vienen con la obra; hasta 8; al sacar una se devuelve la mitad
+      hMin: 1.8, hMax: 3.3, fovMin: 35, fovMax: 100,
+      feedW: 256, feedH: 144, // resolución de cada monitor
+      feedsPerFrame: 1,       // cuántos monitores se redibujan por cuadro (los demás esperan su turno)
+      maxAimDist: 14, aimMargin: 0.18, // la estantería de la sala VIP no puede entrar en el campo de visión de ninguna cámara
+    },
+    counter: { secPer1000: 0.9, minSec: 2.5, maxSec: 9 },  // la contadora de billetes cuenta el bolsillo y lo deposita en el banco
+    gold: {
+      maxBars: 64, startPrice: 1000, minPrice: 600, maxPrice: 4200,
+      drift: 0.007, vol: 0.045,           // cada día sube un poco de media (apreciación) con vaivenes
+      eventChance: 0.07, eventSwing: [0.1, 0.22], // de vez en cuando un salto (crisis o fiebre del oro)
+      spread: 0.04,                       // al vender, la casa de compraventa se queda el 4 %
+      lots: [1, 5, 10], historyDays: 14,
+    },
+    walkie: {
+      maxWait: 45,         // segundos que el guardia busca a la persona antes de desistir
+      guardSpeed: 4.4, escortSpeed: 3.4, officeSec: 50, // en la oficina se queda un rato (segundos del juego) hasta que lo soltés
+      doorWait: 40,        // si la puerta blindada está cerrada, espera afuera este tiempo
+      kick: { casual: -0.3, regular: -0.6, highroller: -1.5, vip: -3, trouble: 0.8, loyalty: -1 }, // reputación por sacar a alguien (trouble: si estaba haciendo lío)
+    },
+    props: [                       // objetos para la oficina (se colocan donde mires)
+      { id: "pistol",  name: "Pistola de colección",  price: 0,    free: true, w: 0.22, d: 0.12, desc: "De adorno: la de verdad se compra en la compu." },
+      { id: "knife",   name: "Cuchillo de caza",      price: 0,    free: true, w: 0.26, d: 0.08, desc: "Sobre la mesa queda bien." },
+      { id: "cash",    name: "Pila de billetes",      price: 250,  w: 0.2,  d: 0.1,  desc: "Fajos atados con banda." },
+      { id: "case",    name: "Valija con plata",      price: 600,  w: 0.5,  d: 0.34, desc: "Abierta, llena de billetes." },
+      { id: "bar",     name: "Lingote de exhibición", price: 400,  w: 0.2,  d: 0.1,  desc: "Un lingote dorado para presumir." },
+      { id: "rifle",   name: "Escopeta en la pared",  price: 900,  w: 0.9,  d: 0.12, desc: "De adorno, sobre un soporte." },
+      { id: "plant",   name: "Planta de escritorio",  price: 180,  w: 0.3,  d: 0.3,  desc: "Un poco de verde." },
+      { id: "lamp",    name: "Lámpara de escritorio", price: 320,  w: 0.24, d: 0.24, desc: "Luz cálida, sin sumar luces reales." },
+      { id: "safe",    name: "Caja de caudales",      price: 1500, w: 0.6,  d: 0.6,  desc: "Una caja fuerte vieja de adorno." },
+    ],
+  };
+})();

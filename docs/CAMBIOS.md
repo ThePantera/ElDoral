@@ -1,5 +1,17 @@
 # Casino Dorado · v2 — Cambios
 
+## Oficina de seguridad (office.js)
+
+- **Dónde:** detrás de la pared del fondo del salón, a la derecha de la estantería. Se construye una vez (rango 3, $6.000) desde el cartel "en obra" de la pared. Se guarda en `S.office`; las partidas viejas cargan sin oficina.
+- **Puerta blindada:** se abre y se cierra con E, desde afuera o desde adentro. Cerrada tiene colisión (no entra nadie, ni clientes ni personal) y una luz roja/verde se ve desde el salón.
+- **Panel de cámaras en vivo:** 6 monitores en la pared (cada cámara se redibuja ~4 veces por segundo, por turnos y solo si estás adentro o mirando desde la puerta). E en los monitores = modo monitor a pantalla completa (A/D cambian de cámara, el juego sigue corriendo). R = editor.
+- **Editor de cámaras:** plano del casino; clic para mover o apuntar, deslizadores de giro, inclinación, zoom y altura, vista previa, encender/apagar, comprar (hasta 8, $450) y quitar (devuelve el 50 %). Se ven colgadas del techo en el salón.
+- **La sala ultra VIP no se vigila:** las cámaras solo pueden estar en el salón principal, las alas compradas, la entrada y la vereda. Ninguna puede apuntar hacia la estantería de la sala VIP (se rechaza al mover/apuntar y se corrige al cargar una partida). Nada de la sala VIP ni de su gente aparece en la lista del walkie-talkie.
+- **Mesa, armas y plata:** mesa con pistola y cuchillo de adorno, fajos y valija, y arriba la contadora de billetes: cuenta el bolsillo y lo deposita en el banco. Objetos para comprar, mover (E) y vender (R, 50 %) con la mesa de la oficina.
+- **Bodega de lingotes de oro:** jaula con estantes; los lingotes se compran y se venden al precio del día, que cambia cada noche y tiende a subir con vaivenes y saltos raros. Al vender, 4 % de comisión.
+- **Walkie-talkie (V):** apuntás a alguien (o lo elegís de la lista) y un guardia lo saca del casino (baja la reputación según el tipo de cliente; sube si estaba haciendo lío) o lo trae a la oficina (si la puerta está abierta; ahí lo dejás ir o lo sacás).
+- Toda la plata pasa por `Economy`; los números están en `data.js` (`OFFICE`); sin luces nuevas.
+
 ## Lavado de cara, paso 3: brillo de casino (fx.js)
 
 - **Halo de luz de verdad:** neones, carteles, pantallas de las máquinas, spots del techo, arañas, foquitos de las marquesinas, faroles, el cartel de la fachada y las ventanas encendidas de la ciudad de noche ahora tiran un halo suave alrededor, como en un casino de verdad. Solo brilla lo que es luz: las paredes, la gente y los muebles iluminados no se "lavan" (cada material le avisa a la imagen si puede brillar o no). Las pantallas de las máquinas tienen un halo más suave para que los rodillos se sigan leyendo, y las ventanas de la ciudad a medio brillo para que no empañen el cielo.
