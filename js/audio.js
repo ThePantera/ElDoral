@@ -24,7 +24,9 @@ const pick = arr => arr[(Math.random() * arr.length) | 0];
 const noise = () => Math.random() * 2 - 1;
 const mf = m => 440 * Math.pow(2, (m - 69) / 12);
 const SETTINGS_KEY = "casino-dorado-sonido-v1";
-const MAX_VOICES = 14;
+const CROWD = (window.CASINO_DATA && window.CASINO_DATA.CROWD) || {}; // topes del salón lleno (data.js)
+const MAX_VOICES = CROWD.maxVoices || 14;
+const SAME_MAX = CROWD.sameMax || 2, SAME_GAP = CROWD.sameGapSec != null ? CROWD.sameGapSec : 0.12;
 
 const settings = { master: 0.8, music: 0.55, sfx: 0.85, muted: false };
 try {
@@ -37,7 +39,7 @@ try {
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* nada */ } }
 
 // contadores de depuración (casinoDebug.audio)
-const stats = { counts: {}, played: {}, skipped: {}, music: {}, steps: 0, errors: [], renderMs: 0, rendered: 0, stolen: 0 };
+const stats = { counts: {}, played: {}, skipped: {}, music: {}, steps: 0, errors: [], renderMs: 0, rendered: 0, stolen: 0, crowded: 0, slow: {} };
 const inc = (o, k) => { o[k] = (o[k] || 0) + 1; };
 
 // =====================================================================
@@ -264,17 +266,17 @@ const DEF = {
   murmur: () => {
     const sec = 6, fade = 0.6, n = Math.ceil((sec + fade) * SR), d = new Float32Array(n);
     const VOW = [[800, 1200], [500, 1900], [300, 2300], [500, 900], [350, 800]];
-    for (let v = 0; v < 9; v++) {
-      const f1 = filt("bp", 500, 4), f2 = filt("bp", 1500, 5);
+    for (let v = 0; v < 11; v++) {
+      const f1 = filt("bp", 500, 3), f2 = filt("bp", 1500, 4);
       let ph = 0, t = rnd(0, 0.4), base = rnd(95, 230);
       while (t < sec + fade) {
         const syl = rnd(0.09, 0.24), vw = pick(VOW), f0 = base * rnd(0.9, 1.15); f1.set(vw[0]); f2.set(vw[1]);
         const s = Math.floor(t * SR), e = Math.min(n, Math.floor((t + syl) * SR)), amp = rnd(0.4, 1);
-        for (let i = s; i < e; i++) { const k = (i - s) / (e - s); ph += f0 * (1 + 0.04 * Math.sin(TAU * 3 * k)) / SR; const src = ((ph % 1) * 2 - 1) * 0.6 + noise() * 0.15; d[i] += amp * Math.sin(Math.PI * k) * (f1.p(src) + 0.6 * f2.p(src)); }
+        for (let i = s; i < e; i++) { const k = (i - s) / (e - s); ph += f0 * (1 + 0.04 * Math.sin(TAU * 3 * k)) / SR; const src = ((ph % 1) * 2 - 1) * 0.5 + noise() * 0.3; d[i] += amp * Math.sin(Math.PI * k) * (f1.p(src) + 0.6 * f2.p(src)); }
         t += syl + (Math.random() < 0.25 ? rnd(0.15, 0.6) : rnd(0.01, 0.05));
       }
     }
-    post(d, filt("lp", 2600));
+    post(d, filt("lp", 2000));
     return norm(loopify(d, fade), 0.8);
   },
   // lluvia (world.js): ruido rosado filtrado con gotas sueltas; trueno: estruendo grave que rueda
@@ -298,6 +300,7 @@ const VARIANTS = { step_soft: 4, step_hard: 4, spin: 2, chips: 3, attract: 3 };
 let ctx = null, ready = false;
 const N = {}; // nodos persistentes
 const cache = new Map();
+const raw = new Map(); // muestras ya sintetizadas en la pantalla de título (todavía sin AudioContext)
 function toBuffer(data) {
   const b = ctx.createBuffer(1, data.length, SR);
   if (b.copyToChannel) b.copyToChannel(data, 0); else b.getChannelData(0).set(data);
@@ -308,8 +311,9 @@ function sample(name) { // buffer cacheado (se renderiza la primera vez)
   const fn = DEF[baseName(name)];
   if (!fn) throw new Error("muestra desconocida " + name);
   const t0 = performance.now();
-  b = toBuffer(fn()); cache.set(name, b);
-  stats.renderMs += performance.now() - t0; stats.rendered++;
+  const data = raw.get(name) || fn(); raw.delete(name);
+  b = toBuffer(data); cache.set(name, b);
+  const ms = performance.now() - t0; stats.renderMs += ms; stats.rendered++; if (ms > 25) stats.slow[name] = Math.round(ms);
   return b;
 }
 const baseName = n => DEF[n] ? n : n.replace(/\d+$/, "");
@@ -353,7 +357,7 @@ function buildGraph() {
   for (let i = 0; i < MAX_VOICES; i++) {
     const gain = g(0), pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     if (pan) gain.connect(pan);
-    N.voices.push({ gain, pan, out: pan || gain, until: 0, src: null, pri: 0, bus: null });
+    N.voices.push({ gain, pan, out: pan || gain, until: 0, start: 0, src: null, pri: 0, bus: null, name: "", g: 0 });
   }
   applyVolumes(true);
 }
@@ -378,8 +382,9 @@ function syncRunning() {
 // =====================================================================
 function voice(buf, o) {
   const now = ctx.currentTime, pri = o.pri || 0;
-  let v = null, oldest = null;
-  for (const c of N.voices) { if (c.until <= now) { v = c; break; } if (c.pri <= pri && (!oldest || c.until < oldest.until)) oldest = c; }
+  let v = o.steal || null, oldest = null;
+  if (v) { try { v.src.stop(); } catch (e) { /* ya terminó */ } }
+  else for (const c of N.voices) { if (c.until <= now) { v = c; break; } if (c.pri <= pri && (!oldest || c.until < oldest.until)) oldest = c; }
   if (!v) { if (!oldest || pri < 1) return false; v = oldest; stats.stolen++; try { v.src.stop(); } catch (e) { /* ya terminó */ } }
   const src = ctx.createBufferSource(); src.buffer = buf;
   const rate = o.rate || 1; src.playbackRate.value = rate;
@@ -388,8 +393,22 @@ function voice(buf, o) {
   if (v.pan) v.pan.pan.setValueAtTime(clamp(o.pan || 0, -1, 1), now);
   if (v.bus !== o.bus) { try { v.out.disconnect(); } catch (e) { /* */ } v.out.connect(o.bus); v.bus = o.bus; }
   src.connect(v.gain); src.start(when);
-  v.src = src; v.pri = pri; v.until = when + buf.duration / rate + 0.02;
+  v.src = src; v.pri = pri; v.until = when + buf.duration / rate + 0.02; v.start = when; v.name = o.name || ""; v.g = o.gain;
   return true;
+}
+// el mismo sonido encimado consigo mismo (diez aplausos o festejos a la vez) suena metálico y "raro": se deja sonar
+// a lo sumo SAME_MAX copias, separadas por SAME_GAP segundos; lo importante (pri 2) pasa siempre.
+// Si ya hay SAME_MAX copias y la nueva suena más fuerte (está más cerca), reemplaza a la más bajita.
+// Devuelve null (puede sonar), false (se descarta) o el canal a reemplazar.
+function sameSlot(name, when, pri, gain) {
+  if (pri >= 2 || !name) return null;
+  const now = ctx.currentTime; let n = 0, low = null;
+  for (const c of N.voices) if (c.name === name && c.until > now) {
+    if (Math.abs(c.start - when) < SAME_GAP) return false;
+    n++; if (!low || c.g < low.g) low = c;
+  }
+  if (n < SAME_MAX) return null;
+  return low && gain > low.g * 1.5 ? low : false;
 }
 function activeVoices() { if (!ctx) return 0; const now = ctx.currentTime; let n = 0; for (const c of N.voices) if (c.until > now) n++; return n; }
 // posición respecto del jugador: ganancia por distancia, paneo estéreo, bus lejano con filtro
@@ -473,9 +492,11 @@ function fire(ev, x, z, o) {
     else { gain *= Math.max(sp.g, e.minG || 0); pan = sp.pan; bus = sp.far || o.far ? N.far : N.near; }
     if (gain < 0.008) { inc(stats.skipped, ev); return false; }
   }
-  const name = variantOf(o.s || e.s);
+  const name = variantOf(o.s || e.s), base = baseName(name);
+  const same = sameSlot(base, ctx.currentTime + (o.delay || 0), e.pri || 0, gain);
+  if (same === false) { inc(stats.skipped, ev); stats.crowded++; return false; }
   const rate = o.rate || (e.rate ? rnd(e.rate[0], e.rate[1]) : 1);
-  const ok = voice(sample(name), { gain, pan, bus, rate, pri: e.pri || 0, delay: o.delay });
+  const ok = voice(sample(name), { gain, pan, bus, rate, pri: e.pri || 0, delay: o.delay, name: base, steal: same });
   if (!ok) { inc(stats.skipped, ev); return false; }
   lastSample[ev] = baseName(name); inc(stats.played, ev);
   if (e.duck) duckMusic(e.duck);
@@ -512,10 +533,10 @@ function loopSrc(name, dest, rate, offset) {
 }
 function startAmbience() {
   if (amb.started) return; amb.started = true;
-  loopSrc("murmur", N.crowdA, 1, 0);
+  loopSrc("murmur0", N.crowdA, 1, 0);
   const pB = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
   if (pB) { pB.pan.value = 0.35; N.crowdB.disconnect(); N.crowdB.connect(pB); pB.connect(N.amb); }
-  loopSrc("murmur", N.crowdB, 0.91, 2.7);
+  loopSrc("murmur1", N.crowdB, 1, 2.7); // otra tanda de voces (antes era la misma más lenta: sonaba a eco raro)
   loopSrc("room", N.roomG, 1, 0);
   try { loopSrc("rain", N.rainG, 1, 0); } catch (e) { stats.errors.push("rain: " + (e && e.message)); }
 }
@@ -527,8 +548,8 @@ function updateAmbience(dt) {
   if (!amb.started) return;
   const t = ctx.currentTime, S = dbg.state, P = dbg.player;
   const n = insideCount(); amb.inside = n;
-  const boost = window.CasinoLife ? window.CasinoLife.crowdBoost : 1; // festejos y peleas suben el murmullo (life.js)
-  const crowd = n === 0 ? 0 : Math.min(0.85, (0.12 + 0.45 * Math.min(1, n / 24)) * boost);
+  const boost = Math.min(CROWD.crowdBoostMax || 1.25, window.CasinoLife ? window.CasinoLife.crowdBoost : 1); // festejos y peleas suben el murmullo (life.js)
+  const crowd = n === 0 ? 0 : Math.min(CROWD.crowdMax || 0.55, (0.12 + 0.4 * Math.min(1, n / 24)) * boost);
   const crowdB = n > 10 ? Math.min(0.35, (n - 10) / 20 * 0.35) : 0;
   const duck = dbg.panel ? 0.55 : 1;
   N.crowdA.gain.setTargetAtTime(crowd * duck, t, 0.8);
@@ -674,11 +695,12 @@ function tenseBeat(t, spb, b, bar) {
   if (music.inspector && b === 0 && bar % 4 === 0) note("timp", t, 1, 0.35);
   N.tense.gain.setTargetAtTime(music.inspector ? 1 : 0.6, t, 0.5);
 }
+const MUSIC_AHEAD = CROWD.musicAheadSec || 0.22; // notas agendadas por adelantado: si el juego se traba un momento, la música sigue
 function musicPump() {
   if (!music.on || !ctx || ctx.state !== "running") return;
   const now = ctx.currentTime;
   if (music.nextT < now - 0.1) music.nextT = now + 0.06; // volvimos de una pausa
-  while (music.nextT < now + 0.22) {
+  while (music.nextT < now + MUSIC_AHEAD) {
     try { scheduleBeat(music.nextT); } catch (e) { stats.errors.push("música: " + (e && e.message)); }
     music.nextT += 60 / music.bpm;
     music.beat = (music.beat + 1) % 4; if (music.beat === 0) music.bar++;
@@ -769,7 +791,7 @@ function init() {
   } catch (e) { stats.errors.push("init: " + (e && e.message)); ready = false; }
 }
 // renderiza el resto de las muestras de a una, sin trabar un cuadro
-const WARM = ["room", "murmur", "door", "spin0", "stop", "win", "collect", "safe", "chips0", "deal", "ride", "kick", "ep48", "ep72", "vibes", "step_hard0", "step_soft2", "step_soft3",
+const WARM = ["room", "murmur0", "murmur1", "door", "spin0", "stop", "win", "collect", "safe", "chips0", "deal", "ride", "kick", "ep48", "ep72", "vibes", "step_hard0", "step_soft2", "step_soft3",
   "step_hard1", "spin1", "chips1", "attract0", "attract1", "bigwin", "shuffle", "roulette", "alarm", "stinger", "fanfare", "goal", "greet", "vipchime", "bell_open", "bell_close", "clink",
   "breakm", "repair", "caught", "hat", "rim", "pad", "timp", "jackpot", "chips2", "attract2", "step_hard2", "step_hard3",
   "cheer", "clap", "grumble", "thud", "punch", "powerdown", "powerup", "spill", "party", "horn", "tape", "rain", "thunder", "shot", "swing"];
@@ -778,11 +800,29 @@ function warm() {
   const next = () => {
     if (i >= WARM.length) return;
     try { sample(WARM[i++]); } catch (e) { stats.errors.push("warm: " + (e && e.message)); }
-    if (cache.has("murmur") && cache.has("room")) startAmbience();
+    if (cache.has("murmur0") && cache.has("murmur1") && cache.has("room")) startAmbience();
     setTimeout(next, 30);
   };
   setTimeout(next, 30);
 }
+// en la pantalla de título se sintetizan las muestras de antemano (algunas tardan 100-300 ms): así no traban
+// los primeros minutos de juego. El AudioContext todavía no existe; sample() solo las pasa a buffer.
+function prewarm() {
+  const heavy = ["murmur0", "murmur1", "jackpot", "fanfare", "pad", "bell_open", "stinger", "vipchime", "bell_close", "bigwin", "safe", "cheer"]; // las más lentas primero
+  const list = heavy.concat(["click", "buzz", "step_soft0", "step_soft1", "coin", "register", "bass", "ep60", "swish", "tap"], WARM);
+  let i = 0;
+  const idle = f => setTimeout(f, 30);
+  const next = () => {
+    if (dbg.started || ctx) return; // ya se juega: sigue warm() de a una
+    while (i < list.length && (cache.has(list[i]) || raw.has(list[i]))) i++;
+    if (i >= list.length) return;
+    const n = list[i++];
+    try { const fn = DEF[baseName(n)]; if (fn) raw.set(n, fn()); } catch (e) { stats.errors.push("prewarm: " + (e && e.message)); }
+    idle(next);
+  };
+  setTimeout(() => idle(next), 600);
+}
+prewarm();
 // el contexto se crea en el primer gesto después de "Abrir el casino" (el click de ese mismo botón)
 for (const ev of ["click", "keydown", "pointerup", "touchend"]) document.addEventListener(ev, () => { if (dbg.started && !ctx) init(); else if (ctx && ctx.state === "suspended" && wantRunning()) syncRunning(); }, false);
 // clicks de interfaz
@@ -818,6 +858,7 @@ const api = {
   get state() { return ctx ? ctx.state : "none"; },
   get context() { return ctx; },
   get voices() { return activeVoices(); },
+  get prewarmed() { return raw.size; },
   settings, stats, lastSample, music, amb,
   setVolume, setMuted,
   graph() {

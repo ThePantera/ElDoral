@@ -710,4 +710,18 @@
       { id: "safe",    name: "Caja de caudales",      price: 1500, w: 0.6,  d: 0.6,  desc: "Una caja fuerte vieja de adorno." },
     ],
   };
+  // ---------------------------------------------------------------
+  // RENDIMIENTO Y SONIDO CON EL SALÓN LLENO (people.js, audio.js)
+  // ---------------------------------------------------------------
+  window.CASINO_DATA.CROWD = {
+    lookCache: 48,       // looks (ropa pintada, textura de 512 px) que quedan guardados sin uso antes de liberarse (antes 24)
+    lookIdleSec: 30,     // segundos sin uso para poder liberar un look (antes 4): la gente que vuelve no se repinta
+    paintPerFrame: 1,    // looks nuevos que se pintan por cuadro; el resto espera su turno (antes: todos de golpe)
+    maxVoices: 14,       // sonidos sueltos sonando a la vez (sin contar música ni murmullo)
+    sameMax: 2,          // copias del mismo sonido a la vez (aplausos, festejos, quejas, fichas...)
+    sameGapSec: 0.12,    // separación mínima entre dos disparos del mismo sonido (encimados exactos suenan "raros")
+    crowdMax: 0.55,      // volumen máximo del murmullo de la gente (antes 0,85)
+    crowdBoostMax: 1.25, // tope del empujón de festejos y peleas sobre el murmullo
+    musicAheadSec: 0.5,  // cuánto adelanta la música sus notas (antes 0,22 s): una traba corta ya no corta el ritmo
+  };
 })();
