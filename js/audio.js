@@ -264,20 +264,18 @@ const DEF = {
   party: () => mk(0.9, d => { tone(d, 0, 420, 0.65, 0.5, { f1: 560, h: SAW, a: 0.03, r: 0.08, vib: 0.03 }); burst(d, 0, 0.7, filt("bp", 1500, 1), 0.15, 0.03, 0.3); post(d, filt("lp", 3000)); }),
   // ambiente: murmullo de gente (voces sintéticas con formantes) y zumbido del salón
   murmur: () => {
+    // rumor de salón sin voces sueltas: ruido grave filtrado en la zona de la voz que sube y baja despacio.
+    // (Antes eran 11 "voces" sintéticas diciendo sílabas: con dos capas sonaba a 22 personas hablando a la vez.)
     const sec = 6, fade = 0.6, n = Math.ceil((sec + fade) * SR), d = new Float32Array(n);
-    const VOW = [[800, 1200], [500, 1900], [300, 2300], [500, 900], [350, 800]];
-    for (let v = 0; v < 11; v++) {
-      const f1 = filt("bp", 500, 3), f2 = filt("bp", 1500, 4);
-      let ph = 0, t = rnd(0, 0.4), base = rnd(95, 230);
-      while (t < sec + fade) {
-        const syl = rnd(0.09, 0.24), vw = pick(VOW), f0 = base * rnd(0.9, 1.15); f1.set(vw[0]); f2.set(vw[1]);
-        const s = Math.floor(t * SR), e = Math.min(n, Math.floor((t + syl) * SR)), amp = rnd(0.4, 1);
-        for (let i = s; i < e; i++) { const k = (i - s) / (e - s); ph += f0 * (1 + 0.04 * Math.sin(TAU * 3 * k)) / SR; const src = ((ph % 1) * 2 - 1) * 0.5 + noise() * 0.3; d[i] += amp * Math.sin(Math.PI * k) * (f1.p(src) + 0.6 * f2.p(src)); }
-        t += syl + (Math.random() < 0.25 ? rnd(0.15, 0.6) : rnd(0.01, 0.05));
-      }
+    const b1 = filt("bp", 420, 0.7), b2 = filt("bp", 1050, 0.9), lp = filt("lp", 1300);
+    const sw = [0, 1, 2].map(() => ({ f: rnd(0.15, 0.7), ph: rnd(0, TAU), a: rnd(0.2, 0.4) }));
+    let br = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / SR; br = br * 0.97 + noise() * 0.25;
+      let env = 0.55; for (const w of sw) env += w.a * Math.sin(TAU * w.f * t + w.ph);
+      d[i] = lp.p(b1.p(br) + 0.45 * b2.p(br)) * Math.max(0.15, env);
     }
-    post(d, filt("lp", 2000));
-    return norm(loopify(d, fade), 0.8);
+    return norm(loopify(d, fade), 0.7);
   },
   // lluvia (world.js): ruido rosado filtrado con gotas sueltas; trueno: estruendo grave que rueda
   rain: () => {
@@ -549,8 +547,10 @@ function updateAmbience(dt) {
   const t = ctx.currentTime, S = dbg.state, P = dbg.player;
   const n = insideCount(); amb.inside = n;
   const boost = Math.min(CROWD.crowdBoostMax || 1.25, window.CasinoLife ? window.CasinoLife.crowdBoost : 1); // festejos y peleas suben el murmullo (life.js)
-  const crowd = n === 0 ? 0 : Math.min(CROWD.crowdMax || 0.55, (0.12 + 0.4 * Math.min(1, n / 24)) * boost);
-  const crowdB = n > 10 ? Math.min(0.35, (n - 10) / 20 * 0.35) : 0;
+  const cMax = CROWD.crowdMax || 0.55;
+  const crowd = n === 0 ? 0 : Math.min(cMax, cMax * (0.3 + 0.7 * Math.min(1, n / 24)) * boost);
+  const B2 = CROWD.crowdLayer2Max != null ? CROWD.crowdLayer2Max : 0.35;
+  const crowdB = n > 10 ? Math.min(B2, (n - 10) / 20 * B2) : 0;
   const duck = dbg.panel ? 0.55 : 1;
   N.crowdA.gain.setTargetAtTime(crowd * duck, t, 0.8);
   N.crowdB.gain.setTargetAtTime(crowdB * duck, t, 0.8);
@@ -859,6 +859,9 @@ const api = {
   get context() { return ctx; },
   get voices() { return activeVoices(); },
   get prewarmed() { return raw.size; },
+  _debugVoices() { if (!ctx) return []; const now = ctx.currentTime; return N.voices.filter(c => c.until > now && c.start <= now).map(c => c.name); },
+  _data(name) { return ctx ? Array.from(sample(name).getChannelData(0)) : null; },
+  _crowd() { return ctx ? { murmurA: +N.crowdA.gain.value.toFixed(3), murmurB: +N.crowdB.gain.value.toFixed(3) } : null; },
   settings, stats, lastSample, music, amb,
   setVolume, setMuted,
   graph() {

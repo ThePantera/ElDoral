@@ -720,7 +720,8 @@
     maxVoices: 14,       // sonidos sueltos sonando a la vez (sin contar música ni murmullo)
     sameMax: 2,          // copias del mismo sonido a la vez (aplausos, festejos, quejas, fichas...)
     sameGapSec: 0.12,    // separación mínima entre dos disparos del mismo sonido (encimados exactos suenan "raros")
-    crowdMax: 0.55,      // volumen máximo del murmullo de la gente (antes 0,85)
+    crowdMax: 0.32,      // volumen máximo del rumor de la gente (v1: 0,85; #17: 0,55)
+    crowdLayer2Max: 0.12, // segunda capa del rumor (lado derecho) con el salón muy lleno (antes 0,35)
     crowdBoostMax: 1.25, // tope del empujón de festejos y peleas sobre el murmullo
     musicAheadSec: 0.5,  // cuánto adelanta la música sus notas (antes 0,22 s): una traba corta ya no corta el ritmo
   };
