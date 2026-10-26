@@ -339,12 +339,12 @@
     var shoeC = o.shoes != null ? o.shoes : 0x141414, sl = new T.Color(shoeC).getHSL({}).l;
     // capellada: zapatillas de color con la parte clara de Kenney; zapatos oscuros apenas un brillo
     var lt = rgb(sl < 0.15 ? mix(shoeC, 0x5a5a5a, 0.35) : mix(shoeC, 0xf4f1ea, 0.85));
-    for (var i = 0, n = TS * TS; i < n; i++) {
-      var px = i % TS, py = (i / TS) | 0;
-      if (py < HH && px < HW) continue;
-      var j = i * 4, f = B[j] / 200, a = B[j + 1] / 255;
-      if (a > 0) { d[j] += (lt[0] - d[j]) * a; d[j + 1] += (lt[1] - d[j + 1]) * a; d[j + 2] += (lt[2] - d[j + 2]) * a; }
-      if (f !== 1) { d[j] *= f; d[j + 1] *= f; d[j + 2] *= f; }
+    for (var py = 0; py < TS; py++) {
+      for (var px = py < HH ? HW : 0, j = (py * TS + px) * 4, je = (py + 1) * TS * 4; j < je; j += 4) {
+        var f = B[j] / 200, a = B[j + 1] / 255;
+        if (a > 0) { d[j] += (lt[0] - d[j]) * a; d[j + 1] += (lt[1] - d[j + 1]) * a; d[j + 2] += (lt[2] - d[j + 2]) * a; }
+        if (f !== 1) { d[j] *= f; d[j + 1] *= f; d[j + 2] *= f; }
+      }
     }
     g.putImageData(img, 0, 0);
   }
@@ -371,7 +371,8 @@
   }
 
   // caché de looks: textura (512) + materiales por gesto. Los looks que nadie usa hace rato se liberan (tope MAX_IDLE).
-  var MAX_IDLE = 24, IDLE_MS = 4000, _looks = new Map();
+  var CR = (window.CASINO_DATA && window.CASINO_DATA.CROWD) || {};
+  var MAX_IDLE = CR.lookCache || 24, IDLE_MS = (CR.lookIdleSec || 4) * 1000, _looks = new Map();
   function now() { return Date.now(); }
   function lookEntry(o) {
     var e = _looks.get(o.key);
@@ -402,7 +403,7 @@
     }
     var t = window.CasinoArt.canvasTex(TS, TS, function (g) { g.fillStyle = css(o.skinK); g.fillRect(0, 0, TS, TS); });
     t.flipY = false;   // UV de glTF: (0,0) arriba a la izquierda, igual que el canvas
-    whenSkins(function () {
+    whenSkins(function () { queuePaint(function () {
       var g = t.userData.ctx;
       g.save(); g.setTransform(TS / 1024, 0, 0, TS / 1024, 0, 0);
       g.fillStyle = css(o.skinK); g.fillRect(0, 0, 1024, 1024);
@@ -411,8 +412,20 @@
       bakePixels(g, o);
       g.save(); g.setTransform(TS / 1024, 0, 0, TS / 1024, 0, 0); paintFaceExtras(g, o); g.restore();
       t.needsUpdate = true;
-    });
+    }); });
     return t;
+  }
+  // pintar un look cuesta 10-40 ms: cuando entra mucha gente junta se pintan de a poco (CROWD.paintPerFrame por cuadro)
+  // en vez de todos en el mismo cuadro. Mientras espera, la persona se ve con la ropa lisa del color de la piel un instante.
+  var paintQ = [], paintOn = false;
+  function queuePaint(f) {
+    paintQ.push(f);
+    if (!paintOn) { paintOn = true; requestAnimationFrame(drainPaint); }
+  }
+  function drainPaint() {
+    var n = Math.max(1, CR.paintPerFrame || 1);
+    while (n-- > 0 && paintQ.length) { try { paintQ.shift()(); } catch (e) { console.error('[CasinoPeople] look', e); } }
+    if (paintQ.length) requestAnimationFrame(drainPaint); else paintOn = false;
   }
   function lookTex(o) { return lookEntry(o).tex; }
 
