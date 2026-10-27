@@ -565,10 +565,11 @@ function validate(kind, id, pose, src, opt) {
   const ex = existingAccess(src);
   for (const p of ex) if (inRect(p, r, p.seat ? 0.05 : 0.15)) return { ok: false, reason: `Tapa el lugar de ${p.label}.` };
   // ¿se puede llegar a todo desde la puerta?
-  const grid = new Uint8Array(ensureNav()); raster(grid, r.minX, r.maxX, r.minZ, r.maxZ, NAV_M);
-  const reach = flood(grid, 0, -12);
+  const base = ensureNav(), grid = new Uint8Array(base); raster(grid, r.minX, r.maxX, r.minZ, r.maxZ, NAV_M);
+  const reach = flood(grid, 0, -12), reach0 = flood(base, 0, -12);
   for (const p of own) if (nearestFree(grid, p.x, p.z, p.r, reach) < 0) return { ok: false, reason: kind === "shelf" ? "Así nadie puede llegar a la góndola." : "Así nadie puede llegar a jugar acá." };
-  for (const p of ex) if (nearestFree(grid, p.x, p.z, p.r, reach) < 0) return { ok: false, reason: `Le cerrás el paso a ${p.label}.` };
+  // solo cuenta lo que este objeto corta: si algo ya estaba tapado antes (partidas viejas), no es culpa del objeto nuevo
+  for (const p of ex) if (nearestFree(grid, p.x, p.z, p.r, reach) < 0 && nearestFree(base, p.x, p.z, p.r, reach0) >= 0) return { ok: false, reason: `Le cerrás el paso a ${p.label}.` };
   if (!(opt && opt.ignorePlayer) && nearestFree(grid, P.x, P.z, 1.0, reach) < 0) return { ok: false, reason: "Te quedarías encerrado." };
   return { ok: true };
 }
